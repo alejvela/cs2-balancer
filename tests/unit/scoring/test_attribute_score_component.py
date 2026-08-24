@@ -9,7 +9,6 @@ from models.player import Player
 from optimizer.normalization.linear_normalizer import LinearNormalizer
 from optimizer.normalization.normalizer import Normalizer
 from scoring.attribute_score_component import AttributeScoreComponent
-from scoring.scoring_model import ScoringModel
 
 
 def build_component(
@@ -44,31 +43,6 @@ def test_component_is_callable_through_score_component_contract():
     component, _ = build_component(normalized_score=64.0)
 
     assert component(Player(nick="Player", elo=1500)) == pytest.approx(64.0)
-
-
-def test_scoring_model_applies_configured_component_weights():
-    elo_component, _ = build_component(
-        name="elo",
-        attribute="elo",
-        normalized_score=80.0,
-    )
-    kd_component, _ = build_component(
-        name="kd",
-        attribute="kd",
-        normalized_score=20.0,
-    )
-    model = ScoringModel(
-        components=[elo_component, kd_component],
-        weights={"elo": 75.0, "kd": 25.0},
-    )
-
-    evaluation = model.evaluate_base(Player(nick="Player", elo=1800, kd=1.1))
-
-    assert evaluation["base_power"] == pytest.approx(65.0)
-    assert evaluation["components"]["elo"]["configured_weight"] == 75.0
-    assert evaluation["components"]["elo"]["weighted_score"] == 6000.0
-    assert evaluation["components"]["kd"]["configured_weight"] == 25.0
-    assert evaluation["components"]["kd"]["weighted_score"] == 500.0
 
 
 @pytest.mark.parametrize(
@@ -133,6 +107,8 @@ def test_has_value_and_raw_value_reflect_numeric_attribute_availability():
     assert component.has_value(missing_player) is False
     assert component.raw_value(missing_player) is None
     assert component.has_value(None) is False
+    assert component.has_value(SimpleNamespace(kd=True)) is False
+    assert component.has_value(SimpleNamespace(kd="1.25")) is False
 
 
 def test_compatibility_alias_is_used_when_configured_attribute_is_missing():
@@ -239,6 +215,14 @@ def test_score_rejects_non_numeric_normalizer_result(normalized_score):
         component.score(Player(nick="Player", elo=1800))
 
 
+def test_score_propagates_normalizer_exception():
+    component, normalizer = build_component()
+    normalizer.normalize.side_effect = RuntimeError("normalizer failed")
+
+    with pytest.raises(RuntimeError, match="normalizer failed"):
+        component.score(Player(nick="Player", elo=1800))
+
+
 def test_raw_value_rejects_none_player_and_non_numeric_attribute():
     component, _ = build_component()
 
@@ -247,3 +231,18 @@ def test_raw_value_rejects_none_player_and_non_numeric_attribute():
 
     with pytest.raises(TypeError, match="must be numeric"):
         component.raw_value(SimpleNamespace(elo="1800"))
+
+
+def test_repr_contains_useful_configuration():
+    component, _ = build_component(
+        name="ELO score",
+        attribute="faceit_elo",
+        default_score=25.0,
+    )
+
+    assert repr(component) == (
+        "AttributeScoreComponent("
+        "name='ELO score', "
+        "attribute='faceit_elo', "
+        "default_score=25.0)"
+    )
