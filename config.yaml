@@ -1,0 +1,68 @@
+teams:
+
+  count: 4
+
+  size: 5
+
+weights:
+
+  power: 0.35
+  elo: 0.20
+  adr: 0.15
+  rating: 0.15
+  kd: 0.10
+  winrate: 0.05
+
+constraints:
+
+  max_level10: 2
+
+  max_awpers: 1
+
+  friends: []
+
+  enemies: [jesulin1, lilop]
+
+optimizer:
+  strategy: exhaustive
+
+  iterators:
+    - swap
+    - rotate
+    - double_swap
+
+    optimizer:
+
+  phases:
+
+    - name: Quick improvement
+
+      iterator: swap
+
+      strategy: first
+
+      iterations: 50
+
+    - name: Fine tuning
+
+      iterator: rotate
+
+      strategy: exhaustive
+
+      iterations: 15
+
+    - name: Escape local optimum
+
+      iterator: double_swap
+
+      strategy: annealing
+
+      iterations: 80
+
+    - name: Final polish
+
+      iterator: swap
+
+      strategy: tabu
+
+      iterations: 20
