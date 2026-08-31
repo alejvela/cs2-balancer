@@ -5,8 +5,7 @@ from abc import ABC, abstractmethod
 
 class Neighborhood(ABC):
 
-    @abstractmethod
-    def generate(
+    def generate(  # noqa: B027
         self,
         teams,
     ):
