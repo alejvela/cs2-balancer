@@ -8,7 +8,7 @@ class Neighborhood(ABC):
     def generate(  # noqa: B027
         self,
         teams,
-    ):
+    ): # noqa: B027
         ...
 
     @abstractmethod
