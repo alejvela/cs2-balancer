@@ -7,9 +7,9 @@ Do not develop directly on `main`.
 Use one branch per Jira issue:
 
 ```text
-feature/LAN-123-short-description
-fix/LAN-124-short-description
-refactor/LAN-125-short-description
+feature/SCRUM-123-short-description
+fix/SCRUM-124-short-description
+refactor/SCRUM-125-short-description
 ```
 
 ## Commits
@@ -17,7 +17,7 @@ refactor/LAN-125-short-description
 Prefer small commits and include the Jira key:
 
 ```text
-LAN-123 Add scoring model unit tests
+SCRUM-123 Add scoring model unit tests
 ```
 
 ## Before opening a pull request
@@ -53,14 +53,14 @@ Test structure:
 ```text
 tests/
 ├── unit/
-├── integration/
 ├── acceptance/
+├── regression/
 └── fixtures/
 ```
 
 Unit tests should avoid external API calls.
 
-Integration and acceptance tests must use frozen fixtures whenever possible.
+Acceptance and regression tests must use frozen fixtures whenever possible.
 
 FACEIT must never be required for CI.
 

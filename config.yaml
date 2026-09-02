@@ -1,3 +1,8 @@
+# LEGACY / INACTIVE CONFIGURATION
+# cs2-balancer v0.5 runtime composition is defined in main.py.
+# This file is not read by the normal application path.
+# Do not use these values as authoritative production configuration.
+
 teams:
 
   count: 4
