@@ -28,6 +28,54 @@ export are:
 The raw immutable representation keeps all source values. Derived ratings and
 aggregations belong to later layers and are not part of this contract.
 
+Each supported file is a complete 5v5 export and therefore must contain exactly
+10 rows with unique `steamid64` values. All rows must have one `matchid` and one
+`mapnumber`. A file that violates any of these rules is invalid.
+
+## Tournament folder import
+
+The tournament root contains direct child directories, and each direct child is
+the authoritative `PlayedSeries` boundary. Only regular `.csv` files immediately
+inside those directories are discovered. CSV files at the tournament root,
+nested directories, and non-CSV files are ignored. Empty child directories are
+still reported as discovered series folders but produce no series and no issue.
+
+Folders and files are sorted by case-insensitive name with the original name as
+a deterministic tie-breaker. Maps in a completed series are sorted by
+`mapnumber`; if different files in one folder contain the same map number, the
+first file in discovery order wins and the later file is reported invalid.
+
+`BestOf` is required external metadata keyed by the series folder name. The
+importer never infers BO1, BO3, or BO5 from the number of files because an export
+may represent an incomplete series. A folder containing valid maps but lacking
+metadata retains those maps in an `ImportedSeries` whose `best_of` is `None` and
+reports a structured series issue; it does not construct a `PlayedSeries`.
+Supplying the metadata on a later stateless rescan constructs the domain series.
+Partial BO3 and BO5 exports are valid; counts exceeding BestOf are series issues
+without discarding the parsed maps. Unknown metadata keys and values that are not
+`BestOf` members are also explicit series issues.
+
+Exact duplicate detection is tournament-global and uses SHA-256 over canonical
+parsed data. Every `PlayerMapStatistics` field is serialized in supported-column
+order and records are sorted by `steamid64`. Thus filenames, BOM, line endings,
+CSV quoting, and source row order do not affect identity, while any parsed value
+change does. Only successfully validated content establishes the first accepted
+copy. Later copies with that fingerprint, including copies under a new name or
+another series folder, are reported as skipped duplicates and never merged or
+counted again. Provenance remains the path of both the accepted file and each
+skipped copy. Re-running an import has no hidden state and produces the same
+result for the same folder contents.
+
+A missing or non-directory tournament root fails the operation. Individual
+unreadable, malformed, inconsistent, or duplicate-map files are collected as
+structured issues, and valid files continue to be available. The returned
+immutable result includes discovered folders and CSV count, accepted files and
+maps, skipped duplicates, invalid files, series-level metadata issues, and all
+series that could be safely constructed.
+
+SCRUM-19 performs no K/D, ADR, Player Impact, ranking, award, or tournament
+aggregate calculation.
+
 ## Semantic limits
 
 The export proves only a generic `utility_damage` value. It does not distinguish
