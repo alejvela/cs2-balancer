@@ -1,125 +1,146 @@
 # CS2 Team Balancer
 
-CS2 team balancing engine for LAN events.
+CS2 team-balancing engine for LAN events. Version `0.5.0` is the completed
+engine-stabilization baseline: it is an internal, developer-oriented application,
+not a mature end-user product or CLI.
 
-The project currently supports three optimization levels:
+The v0.5 baseline includes:
 
-- **FAST**: local optimization from the generated composition.
-- **STABLE**: deterministic multi-start local optimization.
-- **GLOBAL**: branch-and-bound search able to prove optimality when the search space is exhausted.
+- the production player scoring model;
+- `ObjectiveEngine` as the authoritative team-quality evaluation;
+- FAST local optimization;
+- deterministic STABLE multi-start optimization;
+- advanced, bounded GLOBAL search;
+- structural optimizer invariants and fresh score reevaluation;
+- unit, acceptance, and frozen LAN 2026 regression tests.
 
-## Current version
+## Requirements and installation
 
-`0.5.0` — engine stabilization baseline.
+- Python >= 3.11
+- A FACEIT API key for the default live refresh performed by the application
 
-The current development focus is:
-
-1. objective-engine tests;
-2. scoring tests;
-3. optimizer tests;
-4. acceptance tests;
-5. CI and release hardening.
-
-## Requirements
-
-- Python 3.11+
-- FACEIT API key when live FACEIT import is enabled.
-
-## Installation
-
-Create a virtual environment:
-
-```bash
-python -m venv .venv
-```
-
-Activate it on Windows:
+`pyproject.toml` is the authoritative source for project metadata and
+dependencies. Create and activate a virtual environment, then install the project
+with its development dependencies:
 
 ```powershell
+python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-```
-
-Install the project with development dependencies:
-
-```bash
 python -m pip install --upgrade pip
 pip install -e ".[dev]"
 ```
 
-## FACEIT API key
-
-The application currently reads the API key from the environment variable:
+Validate a development checkout with:
 
 ```powershell
-$env:FACEIT_API_KEY="your_key_here"
+python -m pytest
+ruff check .
 ```
 
-Do not commit API keys or `.env` files.
+## Application execution
 
-## Player input
+Run the application from the repository root:
 
-The default source file is:
-
-```text
-data/players.csv
+```powershell
+python main.py
 ```
 
-Expected columns:
+In v0.5, optimization mode selection is a developer configuration mechanism in
+`main.py`, not a command-line interface. Set the `OPTIMIZATION_MODE` constant to
+one of the exact production enum values:
+
+```python
+OPTIMIZATION_MODE = OptimizationMode.FAST
+OPTIMIZATION_MODE = OptimizationMode.STABLE
+OPTIMIZATION_MODE = OptimizationMode.GLOBAL
+```
+
+- **FAST** starts from the generated composition and performs local optimization.
+- **STABLE** performs deterministic multi-start local optimization and selects a
+  reproducible result.
+- **GLOBAL** uses a verified STABLE result as its incumbent, builds a
+  `GlobalSearchProblem`, runs the bounded `GlobalOptimizer`, reevaluates the
+  selected teams with a fresh `ObjectiveEngine` evaluation, and adapts the result
+  to `GlobalReportResult` for reporting.
+
+GLOBAL is an advanced bounded-search mode. It can improve or retain the verified
+incumbent, but normal node, evaluation, or time limits may stop a run before the
+complete search space is exhausted. A normal GLOBAL result therefore does not by
+itself prove mathematical optimality. Optimality is proven only when the solver
+explicitly establishes it under its admissibility and precondition assumptions.
+
+## Player data and FACEIT
+
+The source roster is `data/players.csv`, with these columns:
 
 ```text
 Nick,FaceitNickname,Seed,Team
 ```
 
-`Team` may be left empty for automatic optimization.
+`Team` may be empty for automatic optimization. Normal v0.5 execution has
+`RUN_FACEIT_IMPORT = True` in `main.py`. It requires `FACEIT_API_KEY`, refreshes
+the roster through FACEIT, and writes the enriched runtime data to
+`data/players_stats.csv` before balancing. Configure the key in the environment;
+never commit credentials or `.env` files:
 
-## Run
-
-```bash
-python main.py
+```powershell
+$env:FACEIT_API_KEY="your_key_here"
 ```
 
-## Tests
+When `RUN_FACEIT_IMPORT = False`, the application does not enrich
+`data/players.csv` directly. It reuses an existing `data/players_stats.csv` and
+fails with `FileNotFoundError` if that generated file does not exist. The enriched
+CSV, FACEIT error CSV, and generated output are ignored by Git.
 
-Run the complete suite:
+The test suite is fully offline: it does not call FACEIT and does not require
+FACEIT credentials or ignored runtime data. This differs from running the
+application with its default live-refresh setting.
 
-```bash
-pytest
+## Output
+
+The application writes the HTML report to:
+
+```text
+output/lan_report.html
 ```
 
-Run with coverage:
+Files generated under `output/` are ignored by Git.
 
-```bash
-pytest --cov --cov-report=term-missing
-```
+## Test architecture
 
-## Lint
+The v0.5.0 release baseline is 408 tests across three layers:
 
-```bash
-ruff check .
-```
+- `tests/unit`: component contracts, scoring and objective behavior, structural
+  invariants, moves, neighborhoods, and optimizer behavior.
+- `tests/acceptance`: synthetic 20-player FAST/STABLE/GLOBAL cross-component
+  behavior and consistency with a fresh `ObjectiveEngine` evaluation.
+- `tests/regression`: the reviewed LAN 2026 historical fixture, 20-player power
+  fingerprint, deterministic initial generation, and deterministic STABLE
+  behavioral fingerprint.
 
-Auto-fix safe Ruff findings:
+Run the full suite or coverage report with:
 
-```bash
-ruff check . --fix
+```powershell
+python -m pytest
+python -m pytest --cov --cov-report=term-missing
 ```
 
 ## Project architecture
 
-Main layers:
-
 ```text
-application/     application façade and report-facing results
-evaluation/      internal evaluation models/services
+application/     application facade and report-facing results
+evaluation/      internal evaluation models and services
 exporters/       HTML reporting
 generators/      initial team generation
-importers/       player/stat import
+importers/       player and statistics import
 models/          domain models
-objective/       objective engine and restrictions
-optimizer/       FAST, STABLE and GLOBAL optimization
+objective/       authoritative objective engine and restrictions
+optimizer/       FAST, STABLE, and GLOBAL optimization
 scoring/         individual player scoring
 scrapers/        FACEIT data acquisition
-tests/           unit, integration and acceptance tests
+tests/unit/      component-level tests
+tests/acceptance cross-component engine tests
+tests/regression frozen LAN 2026 regression tests
 ```
 
 ## Development workflow
@@ -128,12 +149,12 @@ The intended repository workflow is:
 
 ```text
 Jira issue
-  -> feature/LAN-123-short-description
+  -> feature/SCRUM-16-v05-release-hygiene
   -> development
-  -> pytest + ruff
+  -> python -m pytest + ruff check .
   -> pull request
   -> GitHub Actions green
   -> squash merge to main
 ```
 
-See `CONTRIBUTING.md`.
+See `CONTRIBUTING.md` and `RELEASE_NOTES.md`.
