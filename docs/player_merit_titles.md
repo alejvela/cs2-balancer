@@ -33,7 +33,7 @@ by the SCRUM-22 canonical fallback for every title.
 | sin_miedo_al_exito | Sin miedo al éxito | opening | entry_count / M | P; M > 0 | entry_wins / M; entry_count |
 | rey_del_clutch | Rey del Clutch | clutch | v1_wins + v2_wins * 1.75 | All | v1_wins + v2_wins; (v1_wins + v2_wins) / (v1_count + v2_count); v1_count + v2_count |
 | el_coleccionista | El Coleccionista | multikill | enemy2ks + enemy3ks * 2 + enemy4ks * 4 + enemy5ks * 7 | All | enemy5ks; enemy4ks; enemy3ks; enemy2ks |
-| pikachu | Pikachu | utility | enemies_flashed / M | P; M > 0 | flash_successes / flash_count; enemies_flashed; flash_successes |
+| pikachu | Pikachu | support | enemies_flashed / M | P; M > 0 | flash_successes / flash_count; enemies_flashed; flash_successes |
 | el_escudero | El Escudero | support | assists / M | P; M > 0 | assists |
 | el_alquimista | El Alquimista | utility | utility_damage / M | P; M > 0 | utility_damage; utility_successes; utility_count |
 | el_cirujano | El Cirujano | precision | head_shot_kills / kills | P; kills > 0 | head_shot_kills; kills; shots_on_target_total |

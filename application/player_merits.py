@@ -134,7 +134,7 @@ MERIT_RULES = tuple(
             _rule(
                 "pikachu",
                 "Pikachu",
-                MeritCategory.UTILITY,
+                MeritCategory.SUPPORT,
                 "enemies_flashed",
                 "maps_played",
             ),

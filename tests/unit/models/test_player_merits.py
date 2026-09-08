@@ -13,6 +13,7 @@ from application.player_merits import (
 from application.player_rankings import rank_tournament
 from application.statistics_aggregation import aggregate_tournament
 from models.player_merit import (
+    MeritCategory,
     MeritEvidence,
     MetricDirection,
     TournamentMerits,
@@ -20,6 +21,16 @@ from models.player_merit import (
 from models.statistics import TournamentStatistics
 from tests.unit.models.test_player_impact import statistics
 from tests.unit.models.test_statistics import import_result, performance, played_map
+
+
+def test_pikachu_category_is_support():
+    rule = next(rule for rule in MERIT_RULES if rule.stable_id == "pikachu")
+    assert rule.category == MeritCategory.SUPPORT
+    result = generate_tournament_merits(
+        TournamentStatistics(1, 1, (statistics(enemies_flashed=8),))
+    )
+    award, = result.for_rule("pikachu")
+    assert award.category == MeritCategory.SUPPORT
 
 
 @pytest.mark.parametrize(
