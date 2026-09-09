@@ -1,0 +1,11 @@
+matchid,mapnumber,steamid64,team,name,kills,deaths,damage,assists,enemy5ks,enemy4ks,enemy3ks,enemy2ks,utility_count,utility_damage,utility_successes,utility_enemies,flash_count,flash_successes,health_points_removed_total,health_points_dealt_total,shots_fired_total,shots_on_target_total,v1_count,v1_wins,v2_count,v2_wins,entry_count,entry_wins,equipment_value,money_saved,kill_reward,live_time,head_shot_kills,cash_earned,enemies_flashed
+semifinal-export-1,1,76561198000000000,Azul,Atlas_2,30,10,3000,3,0,0,0,1,8,75,4,4,8,4,0,0,100,30,1,0,1,0,3,1,4000,500,300,1000,5,10000,4
+semifinal-export-1,1,76561198000000001,Azul,Boreal,15,15,1500,3,0,0,0,1,8,75,4,4,8,4,0,0,100,30,1,0,1,0,8,5,4000,500,300,1000,5,10000,4
+semifinal-export-1,1,76561198000000002,Azul,Clutch,15,15,1500,3,0,0,0,1,8,75,4,4,8,4,0,0,100,30,2,1,2,1,3,1,4000,500,300,1000,5,10000,4
+semifinal-export-1,1,76561198000000003,Azul,Combo,15,15,1500,3,1,1,2,3,8,75,4,4,8,4,0,0,100,30,1,0,1,0,3,1,4000,500,300,1000,5,10000,4
+semifinal-export-1,1,76561198000000004,Azul,Flash,15,15,1500,3,0,0,0,1,8,75,4,4,8,8,0,0,100,30,1,0,1,0,3,1,4000,500,300,1000,5,10000,16
+semifinal-export-1,1,76561198000000005,Rojo,Socorro,15,15,1500,12,0,0,0,1,8,75,4,4,8,4,0,0,100,30,1,0,1,0,3,1,4000,500,300,1000,5,10000,4
+semifinal-export-1,1,76561198000000006,Rojo,Quimico,15,15,1500,3,0,0,0,1,8,300,8,4,8,4,0,0,100,30,1,0,1,0,3,1,4000,500,300,1000,5,10000,4
+semifinal-export-1,1,76561198000000007,Rojo,Cirujano,15,15,1500,3,0,0,0,1,8,75,4,4,8,4,0,0,100,30,1,0,1,0,3,1,4000,500,300,1000,12,10000,4
+semifinal-export-1,1,76561198000000008,Rojo,Mira,15,15,1500,3,0,0,0,1,8,75,4,4,8,4,0,0,100,80,1,0,1,0,3,1,4000,500,300,1000,12,10000,4
+semifinal-export-1,1,76561198000000009,Rojo,Zorro,15,15,1500,3,0,0,0,1,8,75,4,4,8,4,0,0,100,30,1,0,1,0,3,1,4000,2000,300,1500,5,10000,4
