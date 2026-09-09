@@ -1,0 +1,11 @@
+matchid,mapnumber,steamid64,team,name,kills,deaths,damage,assists,enemy5ks,enemy4ks,enemy3ks,enemy2ks,utility_count,utility_damage,utility_successes,utility_enemies,flash_count,flash_successes,health_points_removed_total,health_points_dealt_total,shots_fired_total,shots_on_target_total,v1_count,v1_wins,v2_count,v2_wins,entry_count,entry_wins,equipment_value,money_saved,kill_reward,live_time,head_shot_kills,cash_earned,enemies_flashed
+reused-match-id,2,76561198000000000,Azul,Atlas,60,20,6000,6,0,0,0,2,16,150,8,8,16,8,0,0,200,60,2,0,2,0,6,2,8000,1000,600,2000,10,20000,8
+reused-match-id,2,76561198000000001,Azul,Boreal,30,30,3000,6,0,0,0,2,16,150,8,8,16,8,0,0,200,60,2,0,2,0,16,10,8000,1000,600,2000,10,20000,8
+reused-match-id,2,76561198000000002,Azul,Clutch,30,30,3000,6,0,0,0,2,16,150,8,8,16,8,0,0,200,60,4,2,4,2,6,2,8000,1000,600,2000,10,20000,8
+reused-match-id,2,76561198000000003,Azul,Combo,30,30,3000,6,2,2,4,6,16,150,8,8,16,8,0,0,200,60,2,0,2,0,6,2,8000,1000,600,2000,10,20000,8
+reused-match-id,2,76561198000000004,Azul,Flash,30,30,3000,6,0,0,0,2,16,150,8,8,16,16,0,0,200,60,2,0,2,0,6,2,8000,1000,600,2000,10,20000,32
+reused-match-id,2,76561198000000005,Rojo,Socorro,30,30,3000,24,0,0,0,2,16,150,8,8,16,8,0,0,200,60,2,0,2,0,6,2,8000,1000,600,2000,10,20000,8
+reused-match-id,2,76561198000000006,Rojo,Quimico,30,30,3000,6,0,0,0,2,16,600,16,8,16,8,0,0,200,60,2,0,2,0,6,2,8000,1000,600,2000,10,20000,8
+reused-match-id,2,76561198000000007,Rojo,Cirujano,30,30,3000,6,0,0,0,2,16,150,8,8,16,8,0,0,200,60,2,0,2,0,6,2,8000,1000,600,2000,24,20000,8
+reused-match-id,2,76561198000000008,Rojo,Mira,30,30,3000,6,0,0,0,2,16,150,8,8,16,8,0,0,200,160,2,0,2,0,6,2,8000,1000,600,2000,24,20000,8
+reused-match-id,2,76561198000000009,Rojo,Ahorro,30,30,3000,6,0,0,0,2,16,150,8,8,16,8,0,0,200,60,2,0,2,0,6,2,8000,4000,600,3000,10,20000,8
