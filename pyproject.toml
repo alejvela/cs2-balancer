@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cs2-balancer"
-version = "0.5.0"
+version = "0.6.0"
 description = "CS2 LAN team balancer with FAST, STABLE and GLOBAL optimization modes."
 readme = "README.md"
 requires-python = ">=3.11"
