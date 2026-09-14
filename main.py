@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from collections import Counter
 from collections.abc import Iterable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -15,51 +16,16 @@ from application.results.base_report_result import (
 from application.results.report_mode import (
     ReportMode,
 )
+from configuration import (
+    composition_root,
+    global_factory,
+    objective_factory,
+    pipeline_factory,
+    scoring_factory,
+)
 from configuration.application_config import ApplicationConfig
-from evaluation.preassigned_team_evaluator import (
-    PreassignedTeamEvaluator,
-)
-from exporters.html_v2.html_exporter import (
-    HtmlExporterV2,
-)
-from generators.preassigned_team_generator import (
-    PreassignedTeamGenerator,
-)
-from generators.snake_draft_generator import (
-    SnakeDraftGenerator,
-)
-from importers.csstats_importer import (
-    CssStatsImporter,
-)
 from objective.objective_engine import (
     ObjectiveEngine,
-)
-from objective.restrictions.elo_balance_restriction import (
-    EloBalanceRestriction,
-)
-from objective.restrictions.elo_spread_restriction import (
-    EloSpreadRestriction,
-)
-from objective.restrictions.kd_balance_restriction import (
-    KdBalanceRestriction,
-)
-from objective.restrictions.power_balance_restriction import (
-    PowerBalanceRestriction,
-)
-from objective.restrictions.seed_separation_restriction import (
-    SeedSeparationRestriction,
-)
-from objective.restrictions.team_size_restriction import (
-    TeamSizeRestriction,
-)
-from optimizer.activity.activity_factor_model import (
-    ActivityFactorModel,
-)
-from optimizer.evaluator.move_evaluator import (
-    MoveEvaluator,
-)
-from optimizer.global_search.global_bound_calculator import (
-    GlobalBoundCalculator,
 )
 from optimizer.global_search.global_optimization_result import (
     GlobalOptimizationResult,
@@ -67,53 +33,17 @@ from optimizer.global_search.global_optimization_result import (
 from optimizer.global_search.global_optimizer import (
     GlobalOptimizer,
 )
-from optimizer.global_search.global_player_ordering import (
-    GlobalPlayerOrdering,
-)
-from optimizer.global_search.global_root_builder import (
-    GlobalRootBuilder,
-)
 from optimizer.global_search.global_search_problem import (
     GlobalSearchProblem,
 )
 from optimizer.global_search.global_search_state import (
     GlobalPlayerMetrics,
 )
-from optimizer.local_optimizer import (
-    LocalOptimizer,
-)
 from optimizer.modes.optimization_mode import (
     OptimizationMode,
 )
-from optimizer.neighborhoods.swap_neighborhood import (
-    SwapNeighborhood,
-)
-from optimizer.normalization.factory import (
-    NormalizerFactory,
-)
-from optimizer.optimization_phase import (
-    OptimizationPhase,
-)
 from optimizer.optimization_pipeline import (
     OptimizationPipeline,
-)
-from optimizer.stable.deterministic_restart_generator import (
-    DeterministicRestartGenerator,
-)
-from optimizer.stable.solution_selector import (
-    SolutionSelector,
-)
-from optimizer.stable.stable_optimizer import (
-    StableOptimizer,
-)
-from optimizer.strategies.exhaustive_strategy import (
-    ExhaustiveStrategy,
-)
-from optimizer.strategies.first_improvement_strategy import (
-    FirstImprovementStrategy,
-)
-from scoring.attribute_score_component import (
-    AttributeScoreComponent,
 )
 from scoring.scoring_model import (
     ScoringModel,
@@ -133,7 +63,7 @@ from scrapers.faceit.faceit_scrapper import (
 
 APPLICATION_CONFIG = ApplicationConfig.production_defaults()
 
-# Compatibility aliases for SCRUM-37; composition still lives in this module.
+# Compatibility aliases for SCRUM-37; factories receive explicit config snapshots.
 SOURCE_PLAYERS_FILE = APPLICATION_CONFIG.paths.source_players
 GENERATED_STATS_FILE = APPLICATION_CONFIG.paths.generated_stats
 FACEIT_ERRORS_FILE = APPLICATION_CONFIG.paths.faceit_errors
@@ -159,113 +89,38 @@ FACEIT_RETRIES = APPLICATION_CONFIG.faceit.retries
 FACEIT_RETRY_DELAY_SECONDS = APPLICATION_CONFIG.faceit.retry_delay_seconds
 
 
+
+def _composition_config() -> ApplicationConfig:
+    """Translate legacy aliases at the entrypoint boundary only."""
+    return replace(
+        APPLICATION_CONFIG,
+        event=replace(
+            APPLICATION_CONFIG.event,
+            number_of_teams=NUMBER_OF_TEAMS,
+            team_size=TEAM_SIZE,
+            report_title=REPORT_TITLE,
+        ),
+        stable=STABLE_OPTIMIZATION_CONFIG,
+        global_search=GLOBAL_OPTIMIZATION_CONFIG,
+        optimization_mode=OPTIMIZATION_MODE,
+    )
+
+
 # ============================================================
 # Scoring individual
 # ============================================================
 
 def create_scoring_model() -> ScoringModel:
-    """
-    Construye el modelo de Power Score individual.
-
-    Cada AttributeScoreComponent devuelve una puntuación
-    normalizada entre 0 y 100.
-
-    ScoringModel combina posteriormente los componentes
-    utilizando sus pesos relativos.
-    """
-
-    config = APPLICATION_CONFIG.scoring
-    components = [
-        AttributeScoreComponent(
-            name=c.name,
-            attribute=c.attribute,
-            normalizer=NormalizerFactory.logistic(
-                midpoint=c.midpoint,
-                steepness=c.steepness,
-            ),
-            default_score=c.default_score,
-        )
-        for c in config.components
-    ]
-    weights = {c.name: c.weight for c in config.components}
-
-    return ScoringModel(
-        components=components,
-        weights=weights,
-        minimum_available_weight=config.minimum_available_weight,
-        default_power=config.default_power,
-        activity_factor_model=(
-            ActivityFactorModel()
-        ),
-    )
+    return scoring_factory.create_scoring_model(APPLICATION_CONFIG.scoring)
 
 
 # ============================================================
 # Objective Engine
 # ============================================================
 
-def create_objective_engine(
-    scoring_model: ScoringModel,
-) -> ObjectiveEngine:
-    """
-    Construye el motor de evaluación global.
-
-    Distribución actual de pesos:
-
-        Power Balance:       55 %
-        ELO Balance:         10 %
-        ELO Spread:           5 %
-        KD Balance:          20 %
-        Team Size:            9 %
-        Seed Separation:      1 %
-
-        Total:              100 %
-    """
-
-    config = APPLICATION_CONFIG.objective
-    restrictions = [
-        PowerBalanceRestriction(
-            scoring_model=scoring_model,
-            weight=config.power_weight,
-        ),
-
-        EloBalanceRestriction(
-            weight=config.elo_balance_weight,
-            midpoint=config.elo_midpoint,
-            steepness=config.elo_steepness,
-        ),
-
-        EloSpreadRestriction(
-            weight=config.elo_spread_weight,
-            ideal_spread=config.ideal_spread,
-            good_spread=config.good_spread,
-            acceptable_spread=config.acceptable_spread,
-            poor_spread=config.poor_spread,
-            maximum_spread=config.maximum_spread,
-        ),
-
-        KdBalanceRestriction(
-            weight=config.kd_weight,
-            max_deviation=config.kd_max_deviation,
-        ),
-
-        TeamSizeRestriction(
-            expected_size=TEAM_SIZE,
-            penalty_per_position=config.penalty_per_position,
-            weight=config.team_size_weight,
-        ),
-
-        SeedSeparationRestriction(
-            seed_level=config.seed_level,
-            maximum_per_team=config.maximum_per_team,
-            penalty_per_excess_player=config.penalty_per_excess_player,
-            maximum_penalty=config.maximum_penalty,
-            weight=config.seed_weight,
-        ),
-    ]
-
-    return ObjectiveEngine(
-        restrictions=restrictions,
+def create_objective_engine(scoring_model: ScoringModel) -> ObjectiveEngine:
+    return objective_factory.create_objective_engine(
+        APPLICATION_CONFIG.objective, scoring_model, team_size=TEAM_SIZE,
     )
 
 
@@ -274,38 +129,7 @@ def create_objective_engine(
 # ============================================================
 
 def create_pipeline() -> OptimizationPipeline:
-    """
-    Pipeline estable del optimizador.
-
-    Primera fase:
-        busca rápidamente mejoras mediante swaps.
-
-    Segunda fase:
-        realiza una búsqueda exhaustiva final sobre swaps.
-
-    En este punto no se utilizan movimientos que puedan empeorar
-    deliberadamente la solución.
-    """
-
-    pipeline = OptimizationPipeline()
-    strategies = {
-        "first_improvement": FirstImprovementStrategy,
-        "exhaustive": ExhaustiveStrategy,
-    }
-    for phase in APPLICATION_CONFIG.pipeline.phases:
-        pipeline.add(
-            OptimizationPhase(
-                name=phase.name,
-                neighborhood=SwapNeighborhood(),
-                strategy=strategies[phase.strategy](
-                    minimum_improvement=phase.minimum_improvement,
-                ),
-                max_iterations=phase.max_iterations,
-                enabled=phase.enabled,
-                stop_when_no_move=phase.stop_when_no_move,
-            )
-        )
-    return pipeline
+    return pipeline_factory.create_pipeline(APPLICATION_CONFIG.pipeline)
 
 
 # ============================================================
@@ -316,118 +140,8 @@ def create_balancer(
     scoring_model: ScoringModel,
     objective_engine: ObjectiveEngine | None = None,
 ) -> LanBalancer:
-    """
-    Construye la fachada completa de la aplicación.
-
-    PREASSIGNED:
-        Evalúa exactamente los equipos definidos por CSV.Team.
-
-    OPTIMIZED + FAST:
-        SnakeDraftGenerator
-            ↓
-        LocalOptimizer
-
-    OPTIMIZED + STABLE:
-        SnakeDraftGenerator
-            ↓
-        StableOptimizer
-            ↓
-        múltiples restarts deterministas
-            ↓
-        una única solución seleccionada de forma reproducible
-
-    OPTIMIZED + GLOBAL:
-        LanBalancer ejecuta internamente STABLE para obtener el warm start.
-        El Branch & Bound GLOBAL se ejecuta después en main().
-    """
-    if objective_engine is None:
-        objective_engine = create_objective_engine(
-            scoring_model=scoring_model,
-        )
-
-    move_evaluator = MoveEvaluator(
-        objective=objective_engine,
-    )
-
-    local_optimizer = LocalOptimizer(
-        evaluator=move_evaluator,
-        pipeline=create_pipeline(),
-    )
-
-    restart_generator = (
-        DeterministicRestartGenerator(
-            separated_seed_level=APPLICATION_CONFIG.restart.separated_seed_level,
-            maximum_seeded_players_per_team=APPLICATION_CONFIG.restart.maximum_seeded_players_per_team,
-            minimum_swaps=APPLICATION_CONFIG.restart.minimum_swaps,
-            maximum_swaps=APPLICATION_CONFIG.restart.maximum_swaps,
-            partial_redistribution_ratio=APPLICATION_CONFIG.restart.partial_redistribution_ratio,
-        )
-    )
-
-    stable_selector = SolutionSelector(
-        config=(
-            STABLE_OPTIMIZATION_CONFIG
-        )
-    )
-
-    stable_optimizer = StableOptimizer(
-        local_optimizer=(
-            local_optimizer
-        ),
-        restart_factory=(
-            restart_generator
-        ),
-        config=(
-            STABLE_OPTIMIZATION_CONFIG
-        ),
-        selector=(
-            stable_selector
-        ),
-    )
-
-    return LanBalancer(
-        importer=CssStatsImporter(
-            strict=APPLICATION_CONFIG.event.importer_strict,
-        ),
-
-        generator=SnakeDraftGenerator(
-            scoring_model=scoring_model,
-            team_name_prefix=APPLICATION_CONFIG.event.team_name_prefix,
-            separated_seed_level=APPLICATION_CONFIG.restart.separated_seed_level,
-            maximum_seeded_players_per_team=APPLICATION_CONFIG.restart.maximum_seeded_players_per_team,
-        ),
-
-        optimizer=local_optimizer,
-
-        preassigned_generator=PreassignedTeamGenerator(
-            expected_team_size=TEAM_SIZE,
-            expected_player_count=EXPECTED_PLAYER_COUNT,
-            team_name_prefix=APPLICATION_CONFIG.event.team_name_prefix,
-            require_all_teams=APPLICATION_CONFIG.event.require_all_teams,
-        ),
-
-        preassigned_evaluator=PreassignedTeamEvaluator(
-            objective_engine=objective_engine,
-            title=(
-                APPLICATION_CONFIG.event.preassigned_title
-            ),
-        ),
-
-        exporter=HtmlExporterV2(
-            scoring_model=scoring_model,
-            title=REPORT_TITLE,
-        ),
-
-        optimization_mode=(
-            OptimizationMode.STABLE
-            if OPTIMIZATION_MODE
-            is OptimizationMode.GLOBAL
-            else OPTIMIZATION_MODE
-        ),
-
-        stable_optimizer=(
-            stable_optimizer
-        ),
+    return composition_root.create_balancer(
+        _composition_config(), scoring_model, objective_engine,
     )
 
 
@@ -650,58 +364,13 @@ def create_global_problem(
     players: Iterable[Any],
     scoring_model: ScoringModel,
 ) -> GlobalSearchProblem:
-    metrics = create_global_metrics(
-        players=players,
-        scoring_model=scoring_model,
-    )
-
-    ordering = GlobalPlayerOrdering(
-        protected_seed_level=APPLICATION_CONFIG.objective.seed_level,
-    )
-
-    builder = GlobalRootBuilder(
-        number_of_teams=NUMBER_OF_TEAMS,
-        team_size=TEAM_SIZE,
-        protected_seed_level=APPLICATION_CONFIG.objective.seed_level,
-        maximum_protected_seeds_per_team=APPLICATION_CONFIG.objective.maximum_per_team,
-    )
-
-    return builder.build(
-        players=metrics,
-        ordering=ordering,
+    return global_factory.create_global_problem(
+        _composition_config(), create_global_metrics(players, scoring_model),
     )
 
 
-def create_global_optimizer(
-    objective_engine: ObjectiveEngine,
-) -> GlobalOptimizer:
-    """
-    Construye el Branch & Bound GLOBAL.
-
-    Los pesos deben coincidir exactamente con create_objective_engine().
-    Solo Power aporta actualmente una cota blanda real; ELO/KD se
-    mantienen optimistas a 100 durante la poda.
-    """
-
-    bound_calculator = (
-        GlobalBoundCalculator(
-            power_weight=APPLICATION_CONFIG.objective.power_weight,
-            elo_balance_weight=APPLICATION_CONFIG.objective.elo_balance_weight,
-            elo_spread_weight=APPLICATION_CONFIG.objective.elo_spread_weight,
-            kd_weight=APPLICATION_CONFIG.objective.kd_weight,
-            team_size_weight=APPLICATION_CONFIG.objective.team_size_weight,
-            seed_weight=APPLICATION_CONFIG.objective.seed_weight,
-            score_tolerance=GLOBAL_OPTIMIZATION_CONFIG.score_tolerance,
-        )
-    )
-
-    return GlobalOptimizer(
-        objective_engine=objective_engine,
-        config=GLOBAL_OPTIMIZATION_CONFIG,
-        bound_calculator=(
-            bound_calculator
-        ),
-    )
+def create_global_optimizer(objective_engine: ObjectiveEngine) -> GlobalOptimizer:
+    return global_factory.create_global_optimizer(_composition_config(), objective_engine)
 
 
 def run_global_optimization(
@@ -2555,23 +2224,10 @@ def main() -> int:
         # Aplicación
         # ----------------------------------------------------
 
-        scoring_model = (
-            create_scoring_model()
-        )
-
-        # Compartimos exactamente el mismo ObjectiveEngine entre STABLE
-        # y GLOBAL para que ambos comparen exactamente la misma función
-        # objetivo, con los mismos pesos y restricciones.
-        objective_engine = (
-            create_objective_engine(
-                scoring_model=scoring_model,
-            )
-        )
-
-        balancer = create_balancer(
-            scoring_model=scoring_model,
-            objective_engine=objective_engine,
-        )
+        composition = composition_root.create_balancing_composition(_composition_config())
+        scoring_model = composition.scoring_model
+        objective_engine = composition.objective_engine
+        balancer = composition.balancer
 
         # ----------------------------------------------------
         # Importación
