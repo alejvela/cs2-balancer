@@ -1,6 +1,6 @@
-# Public balancing application API (SCRUM-40)
+# Public balancing application API (SCRUM-40/41)
 
-Baseline: `dc4532bb699b8f687f58eec613e0afc4d631886d` (SCRUM-39).
+SCRUM-41 baseline: `9df99f1229262047d863e32bab7d31bdc201d28c` (SCRUM-40).
 
 ```python
 from application.balancing_application import BalancingApplication
@@ -57,34 +57,54 @@ PREASSIGNED continues to be detected from `player.team_number`. It returns the
 existing evaluation result, preserves teams and bypasses optimization regardless
 of requested optimization mode. GLOBAL therefore needs no runner for PREASSIGNED.
 
-## GLOBAL transition until SCRUM-41
+## Production GLOBAL execution
 
-`GlobalRunner` is a small protocol with one method:
+`BalancingApplication(config)` now executes FAST, STABLE and GLOBAL without
+runner injection. Select `OptimizationMode.GLOBAL` in the same request shown
+above. The default `ApplicationGlobalRunner` lives in
+`application/global_execution.py`; it has no dependency on `main`.
+
+The flow is unchanged: the per-run composition configures `LanBalancer` as
+STABLE, the application obtains its warm start, and the GLOBAL runner adapts
+players to `GlobalPlayerMetrics`. It uses `global_factory.create_global_problem`
+and `create_global_optimizer`, passing exactly `warm_start.teams` and
+`warm_start.final_score` as incumbent. It then evaluates the search teams with
+that composition's same ObjectiveEngine. An absolute score difference greater
+than `config.global_search.score_tolerance` raises the existing `RuntimeError`.
+No extra incumbent evaluation or replacement objective is introduced.
+
+`GlobalReportResult` now lives in `application/results/global_report_result.py`
+and remains a `BaseReportResult`. Its title comes from `warm_start.title`. All
+existing metadata keys, including inherited `stable_optimization`, are preserved.
+The result exposes the existing score/history/search properties plus
+`initial_incumbent_score`, `capacity_prunes`, `seed_prunes`, `stopped_by_limit`,
+`elapsed_seconds` and `stop_reason`. There is no public `raw_result` property.
+Serialization still uses `BaseReportResult.as_dict()` without extra top-level
+keys; GLOBAL details remain in `metadata["global_optimization"]`.
+
+`GlobalRunner` remains a small injectable protocol:
 
 ```python
 def run(self, *, request, composition, warm_start) -> BaseReportResult:
     ...
 ```
 
-Inject it via `BalancingApplication(config, global_runner=runner)`. For optimized
-GLOBAL requests the composition still configures `LanBalancer` as STABLE. The
-application obtains that warm start and delegates to the runner, forwarding the
-same request and composition. It returns the runner's report object directly.
-A runner returning an engine-only object is rejected with `TypeError`.
+A caller can supply a fake or alternate runner through
+`BalancingApplication(config, global_runner=runner)`. Omitting the argument or
+passing None selects the production runner. PREASSIGNED bypasses the runner,
+even when GLOBAL is selected. Engine-only runner returns are still rejected.
+`GlobalExecutionUnavailableError` remains importable for SCRUM-40 compatibility,
+but the normal execution path no longer raises it; GLOBAL now has a default
+implementation rather than an absent dependency.
 
-Without a runner, an optimized GLOBAL request raises
-`GlobalExecutionUnavailableError` explaining that the execution dependency is
-missing. This happens before warm-start optimization, after detecting the report
-mode. GLOBAL is a supported request mode whose implementation is injected during
-this transition; it is not yet fully migrated.
-
-`main.LegacyGlobalRunner` is the temporary production adapter. It calls the
-existing `run_global_optimization()` using the run composition's config and shared
-objective/scoring. Legacy calls without config retain their existing wrappers.
-The adapter returns only `BaseReportResult` and keeps raw search details solely
-at the entrypoint for console output. Metrics adaptation, global search, fresh
-objective verification, metadata and `GlobalReportResult` remain in `main.py`.
-There is no import from application code back to `main`.
+`LegacyGlobalRunner` and its `last_search_result` have been removed. The entrypoint
+prints GLOBAL metrics directly from `GlobalReportResult`. `main` retains only
+compatibility forwarding helpers for metrics, structural factories and the old
+`run_global_optimization` tuple contract, plus an imported `GlobalReportResult`
+alias. The tuple/title/factory overrides exist solely for legacy callers and
+SCRUM-37's optimizer substitution test; the public application API returns only
+the report. Implementation and final verification live in application. The small
+player attribute/nickname access helpers also moved there without semantic changes.
 
 `main()` imports CSV data, builds the request and calls the service once. A small
 composition callback retains that run's collaborators for export/reporting,
@@ -94,11 +114,13 @@ remain at the entrypoint. The service itself performs no file import or export.
 Tests reuse SCRUM-37 fixtures/fingerprints for FAST/STABLE, compare scores,
 metadata, restrictions and history excluding elapsed time, and exercise mode
 isolation, custom config, GLOBAL delegation/error handling, PREASSIGNED in all
-modes, request snapshots and real entrypoint integration. A subprocess rejects
-imports of `main` while importing and executing the application API.
+modes, request snapshots and real entrypoint integration. GLOBAL tests reuse the
+SCRUM-37 retention/improvement fingerprints, verify incumbent and objective
+identity, score tolerance, metric proxies and serialization. A subprocess rejects
+imports of `main` while executing real GLOBAL through the default application.
 
-SCRUM-41 will move the GLOBAL runner implementation into application without
-changing the request/result boundary. SCRUM-42 owns the final thin entrypoint;
+SCRUM-41 moved production GLOBAL execution into application without changing
+the request/result boundary. SCRUM-42 owns the final thin entrypoint;
 engine hardening remains v0.8 and CLI remains v0.9. Existing restart-validation
 differences, GLOBAL flag behavior and player/history identity semantics are
 unchanged. This ticket does not declare v0.7 complete.

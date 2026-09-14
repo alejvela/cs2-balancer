@@ -7,14 +7,17 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from application import global_execution
 from application.balancing_application import BalancingApplication
 from application.balancing_request import BalancingRequest
+from application.global_execution import get_player_attribute, get_player_nickname
 from application.lan_balancer import (
     LanBalancer,
 )
 from application.results.base_report_result import (
     BaseReportResult,
 )
+from application.results.global_report_result import GlobalReportResult
 from application.results.report_mode import (
     ReportMode,
 )
@@ -93,7 +96,6 @@ FACEIT_RETRIES = APPLICATION_CONFIG.faceit.retries
 FACEIT_RETRY_DELAY_SECONDS = APPLICATION_CONFIG.faceit.retry_delay_seconds
 
 
-
 def _composition_config() -> ApplicationConfig:
     """Translate legacy aliases at the entrypoint boundary only."""
     return replace(
@@ -150,218 +152,14 @@ def create_balancer(
 
 
 # ============================================================
-# Adaptador de resultado GLOBAL para informes
-# ============================================================
-
-class GlobalReportResult(BaseReportResult):
-    """
-    Adapta GlobalOptimizationResult al contrato BaseReportResult.
-
-    Esto permite que HtmlExporterV2 y el resto de la capa de informe
-    trabajen directamente con la solución GLOBAL sin depender de un
-    OptimizationHistory basado en movimientos locales.
-    """
-
-    __slots__ = (
-        "_initial_score",
-        "_global_result",
-    )
-
-    def __init__(
-        self,
-        teams,
-        objective_result,
-        initial_score: float,
-        global_result: GlobalOptimizationResult,
-        title: str | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> None:
-        self._initial_score = float(
-            initial_score
-        )
-
-        self._global_result = (
-            global_result
-        )
-
-        super().__init__(
-            teams=teams,
-            objective_result=objective_result,
-            title=title,
-            metadata=(
-                dict(metadata)
-                if metadata is not None
-                else {}
-            ),
-        )
-
-    @property
-    def mode(self) -> ReportMode:
-        return ReportMode.OPTIMIZED
-
-    @property
-    def initial_score(self) -> float:
-        return self._initial_score
-
-    @property
-    def final_score(self) -> float:
-        return float(
-            self.objective_result.score
-        )
-
-    @property
-    def score(self) -> float:
-        return self.final_score
-
-    @property
-    def improvement(self) -> float:
-        return (
-            self.final_score
-            - self.initial_score
-        )
-
-    @property
-    def iterations(self) -> int:
-        # GLOBAL no acepta movimientos locales.
-        return 0
-
-    @property
-    def total_evaluations(self) -> int:
-        return int(
-            self._global_result
-            .complete_solutions_evaluated
-        )
-
-    @property
-    def elapsed_ms(self) -> float:
-        return (
-            float(
-                self._global_result
-                .elapsed_seconds
-            )
-            * 1000.0
-        )
-
-    @property
-    def optimized(self) -> bool:
-        return True
-
-    @property
-    def evaluation_only(self) -> bool:
-        return False
-
-    @property
-    def history(self) -> tuple:
-        # No existe historial de SwapMove en Branch & Bound.
-        return tuple()
-
-    @property
-    def optimization_engine(self) -> str:
-        return "GLOBAL"
-
-    @property
-    def optimality_proven(self) -> bool:
-        return bool(
-            self._global_result.optimality_proven
-        )
-
-    @property
-    def nodes_visited(self) -> int:
-        return int(
-            self._global_result.nodes_visited
-        )
-
-    @property
-    def complete_solutions_evaluated(self) -> int:
-        return int(
-            self._global_result.complete_solutions_evaluated
-        )
-
-    @property
-    def pruned_nodes(self) -> int:
-        return int(
-            self._global_result.pruned_nodes
-        )
-
-    @property
-    def bound_prunes(self) -> int:
-        return int(
-            self._global_result.bound_prunes
-        )
-
-    @property
-    def global_stop_reason(self) -> str:
-        return str(
-            self._global_result.stop_reason
-        )
-
-    @property
-    def search_exhausted(self) -> bool:
-        return (
-            self.global_stop_reason
-            == "SEARCH_EXHAUSTED"
-        )
-
-
-# ============================================================
 # GLOBAL - construcción del problema
 # ============================================================
 
 def create_global_metrics(
-    players: Iterable[Any],
-    scoring_model: ScoringModel,
+    players: Iterable[Any], scoring_model: ScoringModel,
 ) -> tuple[GlobalPlayerMetrics, ...]:
-    metrics: list[GlobalPlayerMetrics] = []
-
-    for player in players:
-        elo = get_player_attribute(
-            player,
-            "elo",
-            "faceit_elo",
-        )
-
-        kd = get_player_attribute(
-            player,
-            "kd",
-        )
-
-        seed = getattr(
-            player,
-            "seed",
-            None,
-        )
-
-        if elo is None:
-            raise ValueError(
-                f"{get_player_nickname(player)} no contiene ELO."
-            )
-
-        if kd is None:
-            raise ValueError(
-                f"{get_player_nickname(player)} no contiene KD."
-            )
-
-        metrics.append(
-            GlobalPlayerMetrics(
-                player=player,
-                power=float(
-                    scoring_model.power(
-                        player
-                    )
-                ),
-                elo=float(elo),
-                kd=float(kd),
-                seed=(
-                    int(seed)
-                    if seed is not None
-                    else None
-                ),
-            )
-        )
-
-    return tuple(
-        metrics
-    )
+    """Compatibility-only forwarding wrapper; implementation lives in application."""
+    return global_execution.create_global_metrics(players, scoring_model)
 
 
 def create_global_problem(
@@ -384,158 +182,21 @@ def run_global_optimization(
     stable_result: BaseReportResult,
     *,
     config: ApplicationConfig | None = None,
-) -> tuple[
-    GlobalReportResult,
-    GlobalOptimizationResult,
-]:
-    """
-    Ejecuta GLOBAL utilizando la solución STABLE como incumbent.
-    """
-
-    if config is None:
-        # Preserve the legacy wrapper overrides used by SCRUM-37 callers.
-        problem = create_global_problem(players=players, scoring_model=scoring_model)
-        optimizer = create_global_optimizer(objective_engine=objective_engine)
-        search_config = GLOBAL_OPTIMIZATION_CONFIG
-    else:
-        problem = global_factory.create_global_problem(
-            config, create_global_metrics(players, scoring_model),
-        )
-        optimizer = global_factory.create_global_optimizer(config, objective_engine)
-        search_config = config.global_search
-
-    global_result = optimizer.optimize(
-        problem=problem,
-        incumbent_teams=(
-            stable_result.teams
+) -> tuple[GlobalReportResult, GlobalOptimizationResult]:
+    """Compatibility-only: preserve SCRUM-37 overrides and its tuple return."""
+    return global_execution.run_global_optimization(
+        players, scoring_model, objective_engine, stable_result,
+        config=config if config is not None else _composition_config(),
+        optimizer_factory=(
+            (lambda config, objective: create_global_optimizer(objective_engine=objective))
+            if config is None else None
         ),
-        incumbent_score=(
-            stable_result.final_score
-        ),
-    )
-
-    # Re-evaluación final con la autoridad real del ObjectiveEngine.
-    objective_result = (
-        objective_engine.evaluate(
-            global_result.teams
-        )
-    )
-
-    if abs(
-        float(objective_result.score)
-        - float(global_result.score)
-    ) > search_config.score_tolerance:
-        raise RuntimeError(
-            "GLOBAL devolvió un score inconsistente con "
-            "ObjectiveEngine. "
-            f"GLOBAL={global_result.score:.8f}, "
-            f"ObjectiveEngine={objective_result.score:.8f}."
-        )
-
-    metadata = dict(
-        getattr(
-            stable_result,
-            "metadata",
-            {},
-        )
-    )
-
-    metadata["optimization_applied"] = True
-    metadata["optimization_mode"] = (
-        OptimizationMode.GLOBAL.value
-    )
-    metadata["optimization_mode_label"] = (
-        OptimizationMode.GLOBAL.label
-    )
-    metadata["optimization_deterministic"] = (
-        OptimizationMode.GLOBAL.deterministic
-    )
-
-    metadata["global_optimization"] = {
-        "initial_incumbent_score": (
-            global_result
-            .initial_incumbent_score
-        ),
-        "final_score": global_result.score,
-        "improvement": (
-            global_result.improvement
-        ),
-        "nodes_visited": (
-            global_result.nodes_visited
-        ),
-        "complete_solutions_evaluated": (
-            global_result
-            .complete_solutions_evaluated
-        ),
-        "pruned_nodes": (
-            global_result.pruned_nodes
-        ),
-        "capacity_prunes": (
-            global_result.capacity_prunes
-        ),
-        "seed_prunes": (
-            global_result.seed_prunes
-        ),
-        "bound_prunes": (
-            global_result.bound_prunes
-        ),
-        "elapsed_seconds": (
-            global_result.elapsed_seconds
-        ),
-        "optimality_proven": (
-            global_result.optimality_proven
-        ),
-        "stopped_by_limit": (
-            global_result.stopped_by_limit
-        ),
-        "stop_reason": (
-            global_result.stop_reason
-        ),
-    }
-
-    report_result = GlobalReportResult(
-        teams=global_result.teams,
-        objective_result=objective_result,
-        initial_score=(
-            global_result
-            .initial_incumbent_score
-        ),
-        global_result=global_result,
         title=REPORT_TITLE if config is None else stable_result.title,
-        metadata=metadata,
     )
-
-    return (
-        report_result,
-        global_result,
-    )
-
-
-class LegacyGlobalRunner:
-    """Entrypoint adapter until SCRUM-41; retain search details for console output."""
-
-    def __init__(self) -> None:
-        self.last_search_result: GlobalOptimizationResult | None = None
-
-    def run(
-        self,
-        *,
-        request: BalancingRequest,
-        composition: BalancingComposition,
-        warm_start: BaseReportResult,
-    ) -> BaseReportResult:
-        report, self.last_search_result = run_global_optimization(
-            players=request.players,
-            scoring_model=composition.scoring_model,
-            objective_engine=composition.objective_engine,
-            stable_result=warm_start,
-            config=composition.config,
-        )
-        return report
 
 
 def print_global_optimization(
-    result: GlobalOptimizationResult,
+    result: GlobalReportResult,
 ) -> None:
     print()
     print("=" * 72)
@@ -862,50 +523,6 @@ def resolve_players_file() -> Path:
 # ============================================================
 # Identidad de jugadores
 # ============================================================
-
-def get_player_attribute(
-    player: Any,
-    primary: str,
-    alternative: str | None = None,
-) -> Any:
-    """
-    Obtiene un atributo contemplando un nombre alternativo.
-    """
-
-    value = getattr(
-        player,
-        primary,
-        None,
-    )
-
-    if (
-        value is None
-        and alternative is not None
-    ):
-        value = getattr(
-            player,
-            alternative,
-            None,
-        )
-
-    return value
-
-
-def get_player_nickname(
-    player: Any,
-) -> str:
-    """
-    Nick mostrado del jugador.
-    """
-
-    return str(
-        get_player_attribute(
-            player,
-            "nickname",
-            "nick",
-        )
-        or "Unknown"
-    )
 
 
 def get_player_identity(
@@ -2232,7 +1849,7 @@ def main() -> int:
         2. Importa Player[].
         3. Detecta el modo mediante Team.
         4. Ejecuta BalancingApplication.run().
-        5. GLOBAL delega mediante el adapter temporal de este entrypoint.
+        5. GLOBAL se ejecuta completamente en application.
         6. Valida el resultado final.
         7. Genera el informe HTML.
 
@@ -2264,9 +1881,8 @@ def main() -> int:
             composition = composition_root.create_balancing_composition(run_config)
             return composition
 
-        global_runner = LegacyGlobalRunner()
         application = BalancingApplication(
-            config, global_runner=global_runner, composition_factory=compose_run,
+            config, composition_factory=compose_run,
         )
         players = CssStatsImporter(strict=config.event.importer_strict).load(players_file)
 
@@ -2310,7 +1926,6 @@ def main() -> int:
         assert composition is not None
         scoring_model = composition.scoring_model
         balancer = composition.balancer
-        global_result = global_runner.last_search_result
 
         # ----------------------------------------------------
         # Validación
@@ -2356,10 +1971,8 @@ def main() -> int:
             scoring_model=scoring_model,
         )
 
-        if global_result is not None:
-            print_global_optimization(
-                global_result
-            )
+        if isinstance(result, GlobalReportResult):
+            print_global_optimization(result)
 
         print_objective_breakdown(
             result
