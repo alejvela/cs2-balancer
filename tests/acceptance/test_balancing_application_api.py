@@ -56,9 +56,13 @@ def assert_same_report(actual, expected):
         abs=1e-6,
     )
     assert without_timing(actual.metadata) == without_timing(expected.metadata)
-    assert without_timing(actual.history.as_dict()) == without_timing(
-        expected.history.as_dict()
-    )
+    if isinstance(actual.history, tuple):
+        # GLOBAL/Evaluation reports have no local OptimizationHistory.
+        assert actual.history == expected.history
+    else:
+        assert without_timing(actual.history.as_dict()) == without_timing(
+            expected.history.as_dict()
+        )
 
 
 @pytest.mark.parametrize(

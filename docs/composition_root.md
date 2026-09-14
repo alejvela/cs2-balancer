@@ -1,5 +1,9 @@
 # Composition factories and root (SCRUM-39)
 
+See [application architecture](application_architecture.md) for the current
+public execution and acceptance matrix. This document details composition;
+the baseline below records the original SCRUM-39 step.
+
 Baseline: `4a4036919329e14fdc7e9383973ec03898dfb7f4` (SCRUM-38).
 This is an incremental v0.7 step; v0.7 is not complete.
 
@@ -82,7 +86,7 @@ this existing boundary without weakening either validation. Some GLOBAL flags
 remain ignored. `generators/team_generator.py` remains empty and untouched because
 the current concrete generators are sufficient for composition.
 
-SCRUM-40 adds the common application API using the existing `BaseReportResult`.
-SCRUM-41 adds production GLOBAL orchestration with no dependency on `main`.
+SCRUM-40 added the common application API using the existing `BaseReportResult`.
+SCRUM-41 moved production GLOBAL orchestration into application with no dependency on `main`.
 Remaining scope: final thin entrypoint = SCRUM-42; engine hardening = v0.8. No optimizer fixes or configuration framework
 are introduced by composition or the application API.
