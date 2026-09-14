@@ -52,7 +52,9 @@ Factories:
   plus the optimizer and bound from config and a shared objective. The bound uses
   objective weights and GLOBAL tolerance; no duplicate defaults are introduced.
 
-`main()` uses the root. Temporary wrappers keep `create_scoring_model`,
+`BalancingApplication` uses the root once per request; `main()` now calls that
+service and retains the run composition for reporting. See the
+[public application API](balancing_application_api.md). Temporary wrappers keep `create_scoring_model`,
 `create_objective_engine`, `create_pipeline`, `create_balancer`,
 `create_global_problem` and `create_global_optimizer` callable with the SCRUM-37
 signatures. `_composition_config()` translates legacy mode, optimizer configs and
@@ -75,6 +77,7 @@ this existing boundary without weakening either validation. Some GLOBAL flags
 remain ignored. `generators/team_generator.py` remains empty and untouched because
 the current concrete generators are sufficient for composition.
 
-Remaining scope: common application API = SCRUM-40; GLOBAL orchestration =
-SCRUM-41; final thin entrypoint = SCRUM-42; engine hardening = v0.8. No new common
-application/result API, optimizer fixes or configuration framework is introduced.
+SCRUM-40 adds the common application API using the existing `BaseReportResult`.
+Remaining scope: GLOBAL orchestration = SCRUM-41; final thin entrypoint =
+SCRUM-42; engine hardening = v0.8. No optimizer fixes or configuration framework
+are introduced by composition or the application API.

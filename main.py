@@ -7,6 +7,8 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from application.balancing_application import BalancingApplication
+from application.balancing_request import BalancingRequest
 from application.lan_balancer import (
     LanBalancer,
 )
@@ -24,6 +26,8 @@ from configuration import (
     scoring_factory,
 )
 from configuration.application_config import ApplicationConfig
+from configuration.composition_root import BalancingComposition
+from importers.csstats_importer import CssStatsImporter
 from objective.objective_engine import (
     ObjectiveEngine,
 )
@@ -378,6 +382,8 @@ def run_global_optimization(
     scoring_model: ScoringModel,
     objective_engine: ObjectiveEngine,
     stable_result: BaseReportResult,
+    *,
+    config: ApplicationConfig | None = None,
 ) -> tuple[
     GlobalReportResult,
     GlobalOptimizationResult,
@@ -386,14 +392,17 @@ def run_global_optimization(
     Ejecuta GLOBAL utilizando la solución STABLE como incumbent.
     """
 
-    problem = create_global_problem(
-        players=players,
-        scoring_model=scoring_model,
-    )
-
-    optimizer = create_global_optimizer(
-        objective_engine=objective_engine,
-    )
+    if config is None:
+        # Preserve the legacy wrapper overrides used by SCRUM-37 callers.
+        problem = create_global_problem(players=players, scoring_model=scoring_model)
+        optimizer = create_global_optimizer(objective_engine=objective_engine)
+        search_config = GLOBAL_OPTIMIZATION_CONFIG
+    else:
+        problem = global_factory.create_global_problem(
+            config, create_global_metrics(players, scoring_model),
+        )
+        optimizer = global_factory.create_global_optimizer(config, objective_engine)
+        search_config = config.global_search
 
     global_result = optimizer.optimize(
         problem=problem,
@@ -415,7 +424,7 @@ def run_global_optimization(
     if abs(
         float(objective_result.score)
         - float(global_result.score)
-    ) > GLOBAL_OPTIMIZATION_CONFIG.score_tolerance:
+    ) > search_config.score_tolerance:
         raise RuntimeError(
             "GLOBAL devolvió un score inconsistente con "
             "ObjectiveEngine. "
@@ -492,7 +501,7 @@ def run_global_optimization(
             .initial_incumbent_score
         ),
         global_result=global_result,
-        title=REPORT_TITLE,
+        title=REPORT_TITLE if config is None else stable_result.title,
         metadata=metadata,
     )
 
@@ -500,6 +509,29 @@ def run_global_optimization(
         report_result,
         global_result,
     )
+
+
+class LegacyGlobalRunner:
+    """Entrypoint adapter until SCRUM-41; retain search details for console output."""
+
+    def __init__(self) -> None:
+        self.last_search_result: GlobalOptimizationResult | None = None
+
+    def run(
+        self,
+        *,
+        request: BalancingRequest,
+        composition: BalancingComposition,
+        warm_start: BaseReportResult,
+    ) -> BaseReportResult:
+        report, self.last_search_result = run_global_optimization(
+            players=request.players,
+            scoring_model=composition.scoring_model,
+            objective_engine=composition.objective_engine,
+            stable_result=warm_start,
+            config=composition.config,
+        )
+        return report
 
 
 def print_global_optimization(
@@ -2199,9 +2231,8 @@ def main() -> int:
         1. Obtiene/actualiza estadísticas FACEIT.
         2. Importa Player[].
         3. Detecta el modo mediante Team.
-        4. Ejecuta LanBalancer.run_players().
-        5. Si GLOBAL está activo, usa STABLE como warm start y ejecuta
-           Branch & Bound.
+        4. Ejecuta BalancingApplication.run().
+        5. GLOBAL delega mediante el adapter temporal de este entrypoint.
         6. Valida el resultado final.
         7. Genera el informe HTML.
 
@@ -2224,18 +2255,20 @@ def main() -> int:
         # Aplicación
         # ----------------------------------------------------
 
-        composition = composition_root.create_balancing_composition(_composition_config())
-        scoring_model = composition.scoring_model
-        objective_engine = composition.objective_engine
-        balancer = composition.balancer
+        config = _composition_config()
+        composition: BalancingComposition | None = None
 
-        # ----------------------------------------------------
-        # Importación
-        # ----------------------------------------------------
+        def compose_run(run_config: ApplicationConfig) -> BalancingComposition:
+            # Keep the run's exact scoring/export collaborators at the entrypoint.
+            nonlocal composition
+            composition = composition_root.create_balancing_composition(run_config)
+            return composition
 
-        players = balancer.importer.load(
-            players_file
+        global_runner = LegacyGlobalRunner()
+        application = BalancingApplication(
+            config, global_runner=global_runner, composition_factory=compose_run,
         )
+        players = CssStatsImporter(strict=config.event.importer_strict).load(players_file)
 
         validate_players(
             players=players,
@@ -2253,7 +2286,7 @@ def main() -> int:
         # Detección del modo
         # ----------------------------------------------------
 
-        mode = balancer.detect_mode(
+        mode = LanBalancer.detect_mode(
             players
         )
 
@@ -2265,45 +2298,19 @@ def main() -> int:
         # Ejecución
         # ----------------------------------------------------
 
-        result = balancer.run_players(
-            players=players,
-            number_of_teams=(
-                NUMBER_OF_TEAMS
-            ),
-            title=REPORT_TITLE,
-            metadata=create_run_metadata(
-                players_file=players_file,
-                mode=mode,
-            ),
-        )
-
-        global_result: (
-            GlobalOptimizationResult
-            | None
-        ) = None
-
-        # ----------------------------------------------------
-        # GLOBAL
-        # ----------------------------------------------------
-
-        if (
-            mode is ReportMode.OPTIMIZED
-            and OPTIMIZATION_MODE
-            is OptimizationMode.GLOBAL
-        ):
-            # `result` contiene aquí el warm start producido por STABLE.
-            # GLOBAL lo conserva como incumbent y solo puede mantenerlo
-            # o mejorarlo.
-            result, global_result = (
-                run_global_optimization(
-                    players=players,
-                    scoring_model=scoring_model,
-                    objective_engine=(
-                        objective_engine
-                    ),
-                    stable_result=result,
-                )
+        result = application.run(
+            BalancingRequest(
+                players=players,
+                number_of_teams=NUMBER_OF_TEAMS,
+                optimization_mode=OPTIMIZATION_MODE,
+                title=REPORT_TITLE,
+                metadata=create_run_metadata(players_file=players_file, mode=mode),
             )
+        )
+        assert composition is not None
+        scoring_model = composition.scoring_model
+        balancer = composition.balancer
+        global_result = global_runner.last_search_result
 
         # ----------------------------------------------------
         # Validación
