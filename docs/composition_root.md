@@ -61,10 +61,15 @@ signatures. `_composition_config()` translates legacy mode, optimizer configs an
 event aliases at this boundary, preserving the characterization tests' overrides.
 New callers use explicit config rather than these wrappers.
 
-GLOBAL selection still configures `LanBalancer` internally as STABLE. Metrics
-adaptation, warm start, search execution, final-score verification, metadata and
-`GlobalReportResult` remain in `main.py`. The structural factory can be called
-independently with prepared `GlobalPlayerMetrics`; it does not run the search.
+GLOBAL selection still configures `LanBalancer` internally as STABLE. The
+application obtains that warm start and its default `ApplicationGlobalRunner`
+uses `application/global_execution.py` for metrics adaptation, search execution,
+final-score verification and metadata. `GlobalReportResult` lives in
+`application/results/`. The structural factory can still be called independently
+with prepared `GlobalPlayerMetrics`; it does not run the search. The runner shares
+the composition's ObjectiveEngine with STABLE and passes the incumbent unchanged.
+`main` retains forwarding wrappers only and prints the application report metrics;
+no legacy runner or raw search-result state is needed.
 
 Compatibility tests from SCRUM-37 and SCRUM-38 remain unchanged. New tests cover
 custom values, graph identity, all three mode selections, independent mutable
@@ -78,6 +83,6 @@ remain ignored. `generators/team_generator.py` remains empty and untouched becau
 the current concrete generators are sufficient for composition.
 
 SCRUM-40 adds the common application API using the existing `BaseReportResult`.
-Remaining scope: GLOBAL orchestration = SCRUM-41; final thin entrypoint =
-SCRUM-42; engine hardening = v0.8. No optimizer fixes or configuration framework
+SCRUM-41 adds production GLOBAL orchestration with no dependency on `main`.
+Remaining scope: final thin entrypoint = SCRUM-42; engine hardening = v0.8. No optimizer fixes or configuration framework
 are introduced by composition or the application API.

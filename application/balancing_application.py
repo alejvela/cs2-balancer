@@ -1,10 +1,11 @@
-"""Common request/result API; GLOBAL execution is supplied by the caller."""
+"""Common request/result API with a production GLOBAL executor by default."""
 
 from collections.abc import Callable
 from dataclasses import replace
 from typing import Protocol
 
 from application.balancing_request import BalancingRequest
+from application.global_execution import ApplicationGlobalRunner
 from application.results.base_report_result import BaseReportResult
 from application.results.report_mode import ReportMode
 from configuration.application_config import ApplicationConfig
@@ -16,7 +17,7 @@ from optimizer.modes.optimization_mode import OptimizationMode
 
 
 class GlobalRunner(Protocol):
-    """Temporary execution seam; the production implementation moves in SCRUM-41."""
+    """Replaceable GLOBAL executor using the common report result contract."""
 
     def run(
         self,
@@ -28,7 +29,7 @@ class GlobalRunner(Protocol):
 
 
 class GlobalExecutionUnavailableError(RuntimeError):
-    """An optimized GLOBAL request needs an injected execution dependency."""
+    """Retained for SCRUM-40 import compatibility; production now has a runner."""
 
 
 class BalancingApplication:
@@ -48,7 +49,9 @@ class BalancingApplication:
         ] = create_balancing_composition,
     ) -> None:
         self._config = config
-        self._global_runner = global_runner
+        self._global_runner = (
+            global_runner if global_runner is not None else ApplicationGlobalRunner()
+        )
         self._composition_factory = composition_factory
 
     def run(self, request: BalancingRequest) -> BaseReportResult:
@@ -63,19 +66,13 @@ class BalancingApplication:
             request.optimization_mode is OptimizationMode.GLOBAL
             and balancer.detect_mode(request.players) is ReportMode.OPTIMIZED
         )
-        if global_execution and self._global_runner is None:
-            # Fail before spending the STABLE warm-start budget. PREASSIGNED
-            # needs no GLOBAL dependency because it never runs optimization.
-            raise GlobalExecutionUnavailableError(
-                "GLOBAL execution requires an injected GlobalRunner dependency"
-            )
         result = balancer.run_players(
             players=request.players,
             number_of_teams=request.number_of_teams,
             title=request.title,
             metadata=dict(request.metadata or {}),
         )
-        if global_execution and self._global_runner is not None:
+        if global_execution:
             result = self._global_runner.run(
                 request=request,
                 composition=composition,

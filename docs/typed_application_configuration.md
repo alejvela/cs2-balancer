@@ -37,7 +37,8 @@ freeze those values; duplicating the mapping here would create avoidable drift.
 including the identical STABLE/GLOBAL objects. Factories accept explicit config
 arguments and do not import `main`. GLOBAL bound weights read the objective weights,
 and its tolerance reads the GLOBAL config. No duplicate bound config is needed.
-GLOBAL orchestration and `GlobalReportResult` remain in `main.py`.
+GLOBAL orchestration and `GlobalReportResult` now live in application (SCRUM-41);
+`main.py` retains compatibility forwarding wrappers.
 
 Validation covers positive event dimensions and phase iterations; nonnegative
 weights and FACEIT limits; unique scoring/phase names; a nonempty pipeline;

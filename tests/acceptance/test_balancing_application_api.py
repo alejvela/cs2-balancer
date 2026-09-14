@@ -16,6 +16,7 @@ from application.balancing_request import BalancingRequest
 from application.lan_balancer import LanBalancer
 from application.results.base_report_result import BaseReportResult
 from application.results.evaluation_result import EvaluationResult
+from application.results.global_report_result import GlobalReportResult
 from application.results.report_mode import ReportMode
 from configuration.application_config import ApplicationConfig
 from configuration.composition_root import create_balancing_composition
@@ -168,15 +169,15 @@ def test_global_runner_receives_request_composition_and_stable_warm_start():
     assert request.metadata == {"tag": "input"}
 
 
-def test_global_without_runner_fails_before_warm_start(monkeypatch):
-    def forbidden(*args, **kwargs):
-        raise AssertionError("Missing dependency must fail before optimization")
-
-    monkeypatch.setattr(LanBalancer, "run_players", forbidden)
-    with pytest.raises(GlobalExecutionUnavailableError, match="injected GlobalRunner"):
-        BalancingApplication(small_config()).run(
-            BalancingRequest(players(), 2, OptimizationMode.GLOBAL),
-        )
+def test_global_without_injection_executes_production_runner():
+    result = BalancingApplication(small_config()).run(
+        BalancingRequest(players(), 2, OptimizationMode.GLOBAL),
+    )
+    assert isinstance(result, GlobalReportResult)
+    assert result.metadata["optimization_mode"] == "global"
+    assert result.stop_reason == "NODE_LIMIT"
+    # Keep the symbol importable for callers written against SCRUM-40.
+    assert issubclass(GlobalExecutionUnavailableError, RuntimeError)
 
 
 def test_global_runner_cannot_return_an_engine_only_result():
@@ -219,17 +220,17 @@ def test_preassigned_is_evaluation_only_for_every_mode(mode, with_runner):
     assert result.metadata["source"] == "request"
 
 
-def test_legacy_global_adapter_uses_request_config_and_public_result():
-    runner = main.LegacyGlobalRunner()
-    result = BalancingApplication(small_config(), global_runner=runner).run(
+def test_production_global_uses_request_config_and_public_result():
+    result = BalancingApplication(small_config()).run(
         BalancingRequest(players(), 2, OptimizationMode.GLOBAL, title="Custom GLOBAL"),
     )
+    assert isinstance(result, GlobalReportResult)
     assert isinstance(result, BaseReportResult)
     assert result.title == "Custom GLOBAL"
     assert result.metadata["optimization_mode"] == "global"
     assert result.metadata["global_optimization"]["stop_reason"] == "NODE_LIMIT"
-    assert runner.last_search_result.stop_reason == "NODE_LIMIT"
-    assert result is not runner.last_search_result
+    assert result.stop_reason == "NODE_LIMIT"
+    assert not hasattr(result, "raw_result")
 
 
 @pytest.mark.parametrize("mode", list(OptimizationMode))
@@ -279,6 +280,9 @@ def test_entrypoint_uses_application_once_and_exports_public_result(
     assert reports[0].metadata["optimization_mode"] == mode.value
     assert reports[0].title == "Entrypoint report"
     assert len(searches) == (1 if mode is OptimizationMode.GLOBAL else 0)
+    if searches:
+        assert searches[0] is reports[0]
+        assert isinstance(searches[0], GlobalReportResult)
 
 
 def test_application_import_and_execution_do_not_import_main():
