@@ -15,6 +15,7 @@ from application.results.base_report_result import (
 from application.results.report_mode import (
     ReportMode,
 )
+from configuration.application_config import ApplicationConfig
 from evaluation.preassigned_team_evaluator import (
     PreassignedTeamEvaluator,
 )
@@ -60,9 +61,6 @@ from optimizer.evaluator.move_evaluator import (
 from optimizer.global_search.global_bound_calculator import (
     GlobalBoundCalculator,
 )
-from optimizer.global_search.global_optimization_config import (
-    GlobalOptimizationConfig,
-)
 from optimizer.global_search.global_optimization_result import (
     GlobalOptimizationResult,
 )
@@ -86,9 +84,6 @@ from optimizer.local_optimizer import (
 )
 from optimizer.modes.optimization_mode import (
     OptimizationMode,
-)
-from optimizer.modes.stable_optimization_config import (
-    StableOptimizationConfig,
 )
 from optimizer.neighborhoods.swap_neighborhood import (
     SwapNeighborhood,
@@ -136,129 +131,32 @@ from scrapers.faceit.faceit_scrapper import (
     FaceitScraper,
 )
 
-# ============================================================
-# Rutas
-# ============================================================
+APPLICATION_CONFIG = ApplicationConfig.production_defaults()
 
-SOURCE_PLAYERS_FILE = Path(
-    "data/players.csv"
-)
-
-GENERATED_STATS_FILE = Path(
-    "data/players_stats.csv"
-)
-
-FACEIT_ERRORS_FILE = Path(
-    "data/faceit_errors.csv"
-)
-
-OUTPUT_REPORT_FILE = Path(
-    "output/lan_report.html"
-)
-
-
-# ============================================================
-# Configuración del evento
-# ============================================================
-
-NUMBER_OF_TEAMS = 4
-TEAM_SIZE = 5
-
-EXPECTED_PLAYER_COUNT = (
-    NUMBER_OF_TEAMS
-    * TEAM_SIZE
-)
-
-EVENT_NAME = (
-    "LAN CS2"
-)
-
-REPORT_TITLE = (
-    "LAN CS2 — Análisis de equipos"
-)
-
-
-# ============================================================
-# Configuración FACEIT
-# ============================================================
-
-RUN_FACEIT_IMPORT = True
-
-FACEIT_PREFERRED_GAME_ID = "cs2"
-
-FACEIT_FALLBACK_GAME_IDS = (
-    "csgo",
-)
-
-FACEIT_RECENT_MATCHES = 30
-
-FACEIT_STRICT = False
-
-FACEIT_DELAY_SECONDS = 0.25
-
-FACEIT_TIMEOUT_SECONDS = 20.0
-
-FACEIT_RETRIES = 3
-
-FACEIT_RETRY_DELAY_SECONDS = 1.0
-
-
-# ============================================================
-# Depuración
-# ============================================================
-
-DEBUG_PLAYERS = False
-DEBUG_FINAL_TEAMS = True
-
-# ============================================================
-# Configuración de optimización
-# ============================================================
-
-# Modos disponibles:
-#
-#     FAST   -> generación + optimización local
-#     STABLE -> múltiples restarts deterministas
-#     GLOBAL -> STABLE como warm start + Branch & Bound global
-#
-OPTIMIZATION_MODE = (
-    OptimizationMode.GLOBAL
-)
-
-STABLE_OPTIMIZATION_CONFIG = (
-    StableOptimizationConfig(
-        target_score=100.0,
-        maximum_restarts=150,
-        minimum_restarts=30,
-        convergence_patience=30,
-        score_tolerance=1e-6,
-        base_seed=2026,
-        target_confirmation_restarts=10,
-        minimum_unique_solutions=20,
-        maximum_total_evaluations=None,
-        maximum_elapsed_seconds=None,
-        stop_on_perfect_score=False,
-        perfect_score=100.0,
-    )
-)
-
-GLOBAL_OPTIMIZATION_CONFIG = (
-    GlobalOptimizationConfig(
-        maximum_nodes=500_000,
-        maximum_evaluations=100_000,
-        maximum_elapsed_seconds=60.0,
-        score_tolerance=1e-6,
-        minimum_improvement=1e-6,
-        use_incumbent=True,
-        use_symmetry_breaking=True,
-        use_seed_pruning=True,
-        use_capacity_pruning=True,
-        use_power_bound=True,
-        use_elo_bound=False,
-        deterministic=True,
-        require_proof=False,
-        base_seed=2026,
-    )
-)
+# Compatibility aliases for SCRUM-37; composition still lives in this module.
+SOURCE_PLAYERS_FILE = APPLICATION_CONFIG.paths.source_players
+GENERATED_STATS_FILE = APPLICATION_CONFIG.paths.generated_stats
+FACEIT_ERRORS_FILE = APPLICATION_CONFIG.paths.faceit_errors
+OUTPUT_REPORT_FILE = APPLICATION_CONFIG.paths.output_report
+NUMBER_OF_TEAMS = APPLICATION_CONFIG.event.number_of_teams
+TEAM_SIZE = APPLICATION_CONFIG.event.team_size
+EXPECTED_PLAYER_COUNT = APPLICATION_CONFIG.event.expected_player_count
+EVENT_NAME = APPLICATION_CONFIG.event.name
+REPORT_TITLE = APPLICATION_CONFIG.event.report_title
+RUN_FACEIT_IMPORT = APPLICATION_CONFIG.faceit.run_import
+DEBUG_PLAYERS = APPLICATION_CONFIG.debug_players
+DEBUG_FINAL_TEAMS = APPLICATION_CONFIG.debug_final_teams
+OPTIMIZATION_MODE = APPLICATION_CONFIG.optimization_mode
+STABLE_OPTIMIZATION_CONFIG = APPLICATION_CONFIG.stable
+GLOBAL_OPTIMIZATION_CONFIG = APPLICATION_CONFIG.global_search
+FACEIT_PREFERRED_GAME_ID = APPLICATION_CONFIG.faceit.preferred_game_id
+FACEIT_FALLBACK_GAME_IDS = APPLICATION_CONFIG.faceit.fallback_game_ids
+FACEIT_RECENT_MATCHES = APPLICATION_CONFIG.faceit.recent_matches
+FACEIT_STRICT = APPLICATION_CONFIG.faceit.strict
+FACEIT_DELAY_SECONDS = APPLICATION_CONFIG.faceit.delay_seconds
+FACEIT_TIMEOUT_SECONDS = APPLICATION_CONFIG.faceit.timeout_seconds
+FACEIT_RETRIES = APPLICATION_CONFIG.faceit.retries
+FACEIT_RETRY_DELAY_SECONDS = APPLICATION_CONFIG.faceit.retry_delay_seconds
 
 
 # ============================================================
@@ -276,77 +174,26 @@ def create_scoring_model() -> ScoringModel:
     utilizando sus pesos relativos.
     """
 
+    config = APPLICATION_CONFIG.scoring
     components = [
         AttributeScoreComponent(
-            name="ELO",
-            attribute="elo",
+            name=c.name,
+            attribute=c.attribute,
             normalizer=NormalizerFactory.logistic(
-                midpoint=1800.0,
-                steepness=-0.003,
+                midpoint=c.midpoint,
+                steepness=c.steepness,
             ),
-            default_score=0.0,
-        ),
-        AttributeScoreComponent(
-            name="KD",
-            attribute="kd",
-            normalizer=NormalizerFactory.logistic(
-                midpoint=1.00,
-                steepness=-8.0,
-            ),
-            default_score=0.0,
-        ),
-        AttributeScoreComponent(
-            name="ADR",
-            attribute="adr",
-            normalizer=NormalizerFactory.logistic(
-                midpoint=75.0,
-                steepness=-0.10,
-            ),
-            default_score=0.0,
-        ),
-        AttributeScoreComponent(
-            name="KPR",
-            attribute="kpr",
-            normalizer=NormalizerFactory.logistic(
-                midpoint=0.70,
-                steepness=-12.0,
-            ),
-            default_score=0.0,
-        ),
-        AttributeScoreComponent(
-            name="Winrate",
-            attribute="winrate",
-            normalizer=NormalizerFactory.logistic(
-                midpoint=50.0,
-                steepness=-0.12,
-            ),
-            default_score=0.0,
-        ),
-        AttributeScoreComponent(
-            name="HS",
-            attribute="hs",
-            normalizer=NormalizerFactory.logistic(
-                midpoint=45.0,
-                steepness=-0.08,
-            ),
-            default_score=0.0,
-        ),
+            default_score=c.default_score,
+        )
+        for c in config.components
     ]
-
-    weights = {
-        "ELO": 40.0,
-        "KD": 25.0,
-        "ADR": 15.0,
-        "KPR": 10.0,
-        "Winrate": 7.0,
-        "HS": 3.0,
-    }
+    weights = {c.name: c.weight for c in config.components}
 
     return ScoringModel(
         components=components,
         weights=weights,
-        minimum_available_weight=40.0,
-        default_power=0.0,
+        minimum_available_weight=config.minimum_available_weight,
+        default_power=config.default_power,
         activity_factor_model=(
             ActivityFactorModel()
         ),
@@ -375,36 +222,45 @@ def create_objective_engine(
         Total:              100 %
     """
 
+    config = APPLICATION_CONFIG.objective
     restrictions = [
         PowerBalanceRestriction(
             scoring_model=scoring_model,
-            weight=55.0,
+            weight=config.power_weight,
         ),
 
         EloBalanceRestriction(
-            weight=10.0,
+            weight=config.elo_balance_weight,
+            midpoint=config.elo_midpoint,
+            steepness=config.elo_steepness,
         ),
 
         EloSpreadRestriction(
-            weight=5.0,
+            weight=config.elo_spread_weight,
+            ideal_spread=config.ideal_spread,
+            good_spread=config.good_spread,
+            acceptable_spread=config.acceptable_spread,
+            poor_spread=config.poor_spread,
+            maximum_spread=config.maximum_spread,
         ),
 
         KdBalanceRestriction(
-            weight=20.0,
-            max_deviation=0.35,
+            weight=config.kd_weight,
+            max_deviation=config.kd_max_deviation,
         ),
 
         TeamSizeRestriction(
             expected_size=TEAM_SIZE,
-            weight=9.0,
+            penalty_per_position=config.penalty_per_position,
+            weight=config.team_size_weight,
         ),
 
         SeedSeparationRestriction(
-            seed_level=1,
-            maximum_per_team=1,
-            penalty_per_excess_player=100.0,
-            maximum_penalty=100.0,
-            weight=1.0,
+            seed_level=config.seed_level,
+            maximum_per_team=config.maximum_per_team,
+            penalty_per_excess_player=config.penalty_per_excess_player,
+            maximum_penalty=config.maximum_penalty,
+            weight=config.seed_weight,
         ),
     ]
 
@@ -431,35 +287,25 @@ def create_pipeline() -> OptimizationPipeline:
     deliberadamente la solución.
     """
 
-    return (
-        OptimizationPipeline()
-
-        .add(
+    pipeline = OptimizationPipeline()
+    strategies = {
+        "first_improvement": FirstImprovementStrategy,
+        "exhaustive": ExhaustiveStrategy,
+    }
+    for phase in APPLICATION_CONFIG.pipeline.phases:
+        pipeline.add(
             OptimizationPhase(
-                name="Quick Swap Improvement",
+                name=phase.name,
                 neighborhood=SwapNeighborhood(),
-                strategy=FirstImprovementStrategy(
-                    minimum_improvement=0.01,
+                strategy=strategies[phase.strategy](
+                    minimum_improvement=phase.minimum_improvement,
                 ),
-                max_iterations=100,
-                enabled=True,
-                stop_when_no_move=True,
+                max_iterations=phase.max_iterations,
+                enabled=phase.enabled,
+                stop_when_no_move=phase.stop_when_no_move,
             )
         )
-
-        .add(
-            OptimizationPhase(
-                name="Final Swap Polish",
-                neighborhood=SwapNeighborhood(),
-                strategy=ExhaustiveStrategy(
-                    minimum_improvement=0.01,
-                ),
-                max_iterations=30,
-                enabled=True,
-                stop_when_no_move=True,
-            )
-        )
-    )
+    return pipeline
 
 
 # ============================================================
@@ -510,11 +356,11 @@ def create_balancer(
 
     restart_generator = (
         DeterministicRestartGenerator(
-            separated_seed_level=1,
-            maximum_seeded_players_per_team=1,
-            minimum_swaps=1,
-            maximum_swaps=6,
-            partial_redistribution_ratio=0.50,
+            separated_seed_level=APPLICATION_CONFIG.restart.separated_seed_level,
+            maximum_seeded_players_per_team=APPLICATION_CONFIG.restart.maximum_seeded_players_per_team,
+            minimum_swaps=APPLICATION_CONFIG.restart.minimum_swaps,
+            maximum_swaps=APPLICATION_CONFIG.restart.maximum_swaps,
+            partial_redistribution_ratio=APPLICATION_CONFIG.restart.partial_redistribution_ratio,
         )
     )
 
@@ -541,14 +387,14 @@ def create_balancer(
 
     return LanBalancer(
         importer=CssStatsImporter(
-            strict=True,
+            strict=APPLICATION_CONFIG.event.importer_strict,
         ),
 
         generator=SnakeDraftGenerator(
             scoring_model=scoring_model,
-            team_name_prefix="Equipo",
-            separated_seed_level=1,
-            maximum_seeded_players_per_team=1,
+            team_name_prefix=APPLICATION_CONFIG.event.team_name_prefix,
+            separated_seed_level=APPLICATION_CONFIG.restart.separated_seed_level,
+            maximum_seeded_players_per_team=APPLICATION_CONFIG.restart.maximum_seeded_players_per_team,
         ),
 
         optimizer=local_optimizer,
@@ -556,14 +402,14 @@ def create_balancer(
         preassigned_generator=PreassignedTeamGenerator(
             expected_team_size=TEAM_SIZE,
             expected_player_count=EXPECTED_PLAYER_COUNT,
-            team_name_prefix="Equipo",
-            require_all_teams=True,
+            team_name_prefix=APPLICATION_CONFIG.event.team_name_prefix,
+            require_all_teams=APPLICATION_CONFIG.event.require_all_teams,
         ),
 
         preassigned_evaluator=PreassignedTeamEvaluator(
             objective_engine=objective_engine,
             title=(
-                "Evaluación de equipos predeterminados"
+                APPLICATION_CONFIG.event.preassigned_title
             ),
         ),
 
@@ -810,14 +656,14 @@ def create_global_problem(
     )
 
     ordering = GlobalPlayerOrdering(
-        protected_seed_level=1,
+        protected_seed_level=APPLICATION_CONFIG.objective.seed_level,
     )
 
     builder = GlobalRootBuilder(
         number_of_teams=NUMBER_OF_TEAMS,
         team_size=TEAM_SIZE,
-        protected_seed_level=1,
-        maximum_protected_seeds_per_team=1,
+        protected_seed_level=APPLICATION_CONFIG.objective.seed_level,
+        maximum_protected_seeds_per_team=APPLICATION_CONFIG.objective.maximum_per_team,
     )
 
     return builder.build(
@@ -839,13 +685,13 @@ def create_global_optimizer(
 
     bound_calculator = (
         GlobalBoundCalculator(
-            power_weight=55.0,
-            elo_balance_weight=10.0,
-            elo_spread_weight=5.0,
-            kd_weight=20.0,
-            team_size_weight=9.0,
-            seed_weight=1.0,
-            score_tolerance=1e-6,
+            power_weight=APPLICATION_CONFIG.objective.power_weight,
+            elo_balance_weight=APPLICATION_CONFIG.objective.elo_balance_weight,
+            elo_spread_weight=APPLICATION_CONFIG.objective.elo_spread_weight,
+            kd_weight=APPLICATION_CONFIG.objective.kd_weight,
+            team_size_weight=APPLICATION_CONFIG.objective.team_size_weight,
+            seed_weight=APPLICATION_CONFIG.objective.seed_weight,
+            score_tolerance=GLOBAL_OPTIMIZATION_CONFIG.score_tolerance,
         )
     )
 
