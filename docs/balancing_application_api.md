@@ -1,5 +1,9 @@
 # Public balancing application API (SCRUM-40/41)
 
+See [application architecture](application_architecture.md) for the consolidated
+architecture and SCRUM-43 acceptance matrix. This document details the API;
+the baseline below records the original SCRUM-41 step.
+
 SCRUM-41 baseline: `9df99f1229262047d863e32bab7d31bdc201d28c` (SCRUM-40).
 
 ```python
@@ -48,7 +52,7 @@ The application keeps immutable `ApplicationConfig` and uses
 `create_balancing_composition()` once per run with a replaced optimization mode
 and event team count. Request team count governs execution and the derived
 expected player count; team size and all tuning remain config inputs. Each call
-gets fresh scoring, objective, generators and optimizers. FAST → STABLE → FAST
+gets fresh scoring, objective, generators and optimizers. FAST → STABLE → GLOBAL → FAST
 on one service does not mutate a shared balancer mode or retain optimizer state.
 The optional `composition_factory` callable must preserve this fresh-graph
 contract. Tests and the entrypoint can use it to observe the exact run graph.
