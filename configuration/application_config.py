@@ -1,4 +1,4 @@
-"""Immutable production data; construction stays in main until SCRUM-39."""
+"""Immutable production data consumed explicitly by composition factories."""
 
 from dataclasses import dataclass, field
 from pathlib import Path
