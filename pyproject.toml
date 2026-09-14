@@ -59,6 +59,7 @@ addopts = "-ra"
 [tool.coverage.run]
 branch = true
 source = [
+    "configuration",
     "application",
     "evaluation",
     "exporters",
