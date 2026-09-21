@@ -7,8 +7,8 @@ complete tournament analytics pipeline implemented under SCRUM-17, from map CSV
 imports to a standalone HTML report.
 
 The application remains developer-oriented and has no mature public CLI.
-Balancing runs through `main.py`; tournament reporting uses the public Python API
-shown below.
+Balancing offers the `BalancingApplication` Python API and the supported
+`main.py` entrypoint; tournament reporting uses the Python API shown below.
 
 ## LAN Team Balancing
 
@@ -54,15 +54,33 @@ Run the application from the repository root:
 python main.py
 ```
 
-Optimization mode selection is a developer configuration mechanism in
-`main.py`, not a command-line interface. Set the `OPTIMIZATION_MODE` constant to
-one of the exact production enum values:
+`main.py` is an entrypoint; the reusable API is `BalancingApplication`. The v0.7
+application foundation in development uses typed Python configuration from
+`ApplicationConfig.production_defaults()`. Customize it with `dataclasses.replace`
+and select the mode in each request:
 
 ```python
-OPTIMIZATION_MODE = OptimizationMode.FAST
-OPTIMIZATION_MODE = OptimizationMode.STABLE
-OPTIMIZATION_MODE = OptimizationMode.GLOBAL
+from application.balancing_application import BalancingApplication
+from application.balancing_request import BalancingRequest
+from configuration.application_config import ApplicationConfig
+from optimizer.modes.optimization_mode import OptimizationMode
+
+config = ApplicationConfig.production_defaults()
+app = BalancingApplication(config)
+# players is a Sequence[Player] supplied by the caller.
+result = app.run(
+    BalancingRequest(
+        players=players,
+        number_of_teams=4,
+        optimization_mode=OptimizationMode.STABLE,
+    )
+)
 ```
+
+The service returns `BaseReportResult` and performs no file import or export.
+See [application architecture](docs/application_architecture.md) for composition,
+results and acceptance evidence. Legacy constants/wrappers in `main.py` remain
+for compatibility; there is no public CLI or YAML configuration loader.
 
 - **FAST** starts from the generated composition and performs local optimization.
 - **STABLE** performs deterministic multi-start local optimization and selects a
@@ -87,7 +105,8 @@ Nick,FaceitNickname,Seed,Team
 ```
 
 `Team` may be empty for automatic optimization. Default balancing execution has
-`RUN_FACEIT_IMPORT = True` in `main.py`. It requires `FACEIT_API_KEY`, refreshes
+`FaceitConfig.run_import=True` (exposed by the legacy `RUN_FACEIT_IMPORT` alias
+in `main.py`). It requires `FACEIT_API_KEY`, refreshes
 the roster through FACEIT, and writes the enriched runtime data to
 `data/players_stats.csv` before balancing. Configure the key in the environment;
 never commit credentials or `.env` files:
@@ -230,6 +249,8 @@ The full formula remains in [Player Impact Rating v1](docs/player_impact_rating_
 
 The detailed contracts remain the source for schemas, formulas, and edge cases:
 
+- [Balancing application architecture](docs/application_architecture.md): typed
+  configuration, public API, execution flows, report consumers and acceptance.
 - [LAN match CSV contract](docs/lan_match_csv_contract.md): required schema,
   validation, folder boundaries, BestOf metadata, deduplication, and diagnostics.
 - [Player statistics contract](docs/player_statistics_contract.md): canonical
@@ -253,7 +274,8 @@ The offline suite covers four layers:
 - `tests/integration`: tournament folder import, report generation, and the
   complete tournament analytics pipeline.
 - `tests/acceptance`: synthetic 20-player FAST/STABLE/GLOBAL cross-component
-  behavior and consistency with a fresh `ObjectiveEngine` evaluation.
+  behavior, public application and PREASSIGNED flows, offline bootstrap, real HTML
+  export and consistency with a fresh `ObjectiveEngine` evaluation.
 - `tests/regression`: the reviewed LAN 2026 historical fixture, 20-player power
   fingerprint, deterministic initial generation, and deterministic STABLE
   behavioral fingerprint.
@@ -274,7 +296,8 @@ python -m pytest --cov --cov-report=term-missing
 ## Project architecture
 
 ```text
-application/     balancing facade, statistics, Impact, rankings, merits, report flow
+application/     balancing API/orchestration/results, tournament analytics/report flow
+configuration/   typed application config, factories and fresh composition root
 evaluation/      internal evaluation models and services
 exporters/       balancing HTML and standalone Spanish tournament HTML/CSS
 generators/      initial team generation
@@ -286,9 +309,9 @@ scoring/         individual player scoring
 scrapers/        FACEIT data acquisition
 tests/unit/      component-level tests
 tests/integration/ tournament import/report flow and frozen tournament acceptance
-tests/acceptance/ cross-component engine tests
+tests/acceptance/ cross-component engine and public application/report acceptance
 tests/regression/ frozen LAN 2026 engine regression tests
-docs/            detailed tournament analytics and reporting contracts
+docs/            application architecture and tournament analytics/reporting contracts
 ```
 
 ## Development workflow

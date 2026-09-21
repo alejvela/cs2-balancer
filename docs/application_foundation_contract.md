@@ -2,9 +2,11 @@
 
 SCRUM-37 freezes the published v0.6.0 baseline at
 `c93ae772837d4a4c20173a516fd2f3a78e7ad71b` before SCRUM-38..42.
-This is characterization, not the implementation of the v0.7 architecture.
+This document records that historical characterization. For the implemented
+SCRUM-38..41 architecture and SCRUM-43 acceptance, see
+[application architecture](application_architecture.md).
 
-## Current boundary and intended direction
+## Historical boundary and current architecture
 
 In v0.6, `main.py` owns configuration constants, scoring construction,
 objective construction, pipeline construction, application composition,
@@ -14,7 +16,7 @@ balancer for the warm start. `main.run_global_optimization` then runs GLOBAL,
 checks its score against a fresh objective evaluation, and adapts the result.
 PREASSIGNED remains evaluation-only.
 
-The intended v0.7 dependency flow is:
+The application foundation now implements the responsibility flow envisioned here:
 
 ```text
 typed configuration
@@ -28,21 +30,23 @@ FAST / STABLE / GLOBAL
 common application result
 ```
 
-`main.py` will become bootstrap. These are responsibility boundaries, not final
-API names, signatures, or a proposed implementation in this ticket. Application
-code may depend on the engine; the engine must not depend on `main.py`, CLI,
-presentation concerns, or filesystem bootstrap details. Tests may import the
-current composition from `main.py`; that is not an engine dependency.
+`main.py` now calls `BalancingApplication` and retains bootstrap, presentation,
+export and compatibility wrappers. Final thin-entrypoint cleanup remains
+SCRUM-42. Application code may depend on the engine; the engine must not depend
+on `main.py`, CLI, presentation concerns, or filesystem bootstrap details.
+Characterization tests still use compatibility wrappers from `main.py`; those
+delegate to typed configuration/factories and application GLOBAL orchestration.
 
 v0.7 is a **behavior-preserving refactor**. Deliberate engine semantic changes
-belong to v0.8; operator experience and CLI belong to v0.9. Move the test setup
-to the new composition boundary when it exists, preserving the expectations.
+belong to v0.8; operator experience and CLI belong to v0.9. Public API acceptance
+now reuses these expectations through the new application boundary.
 Do not regenerate baselines merely to make a refactor pass.
 
 ## Production composition protected here
 
 `tests/acceptance/test_application_composition_contract.py` checks the actual
-objects built by `main.py`, including defaults inherited from their constructors:
+objects obtained through `main.py`'s compatibility wrappers (now backed by
+configuration factories), including defaults inherited from their constructors:
 
 - Scoring: ELO/KD/ADR/KPR/Winrate/HS weights 40/25/15/10/7/3; logistic
   `(midpoint, steepness)` values `(1800, -0.003)`, `(1, -8)`, `(75, -0.10)`,
@@ -120,4 +124,5 @@ ignores presentation order. Existing STABLE result/history consistency debt is
 not repaired, and no requirement that STABLE outperform FAST is introduced.
 No console/HTML byte snapshot or live FACEIT call is needed for these engine
 composition contracts. Tournament fixtures, product code, CLI, configuration
-formats and definitive future APIs are outside this ticket.
+formats and definitive future APIs were outside SCRUM-37. Subsequent application
+API and real HTML acceptance are documented in the central architecture guide.

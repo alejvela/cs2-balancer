@@ -1,5 +1,9 @@
 # Typed application configuration (SCRUM-38, adopted by SCRUM-39)
 
+See [application architecture](application_architecture.md) for the current
+execution flows, acceptance matrix and deferred work. This document details the
+configuration contract; the baseline below is historical.
+
 `ApplicationConfig.production_defaults()` in
 `configuration/application_config.py` returns fresh, frozen/slotted Python value
 objects. It preserves the production contract at
@@ -55,6 +59,7 @@ typed configurations can therefore still be rejected during engine construction.
 
 The legacy aliases are captured at import time; replacing `APPLICATION_CONFIG`
 at runtime is not a supported application configuration API. Call
+`BalancingApplication(config)` for public execution or
 `create_balancing_composition(config)` for explicit composition. Compatibility
 wrappers in `main.py` translate legacy aliases into a config snapshot. Ignored
 GLOBAL flags and warm-start/report behavior remain unchanged.
