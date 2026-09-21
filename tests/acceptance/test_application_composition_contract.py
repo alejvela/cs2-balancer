@@ -2,14 +2,23 @@
 
 from dataclasses import asdict
 
-import main
+from configuration import (
+    composition_root,
+    global_factory,
+    objective_factory,
+    pipeline_factory,
+    scoring_factory,
+)
+from configuration.application_config import ApplicationConfig
 from optimizer.activity.activity_factor_model import ActivityFactorModel
 from optimizer.modes.optimization_mode import OptimizationMode
 from optimizer.normalization.logistic_normalizer import LogisticNormalizer
 
+config = ApplicationConfig.production_defaults()
+
 
 def test_production_scoring_composition():
-    model = main.create_scoring_model()
+    model = scoring_factory.create_scoring_model(config.scoring)
     expected = [
         ("ELO", "elo", 40.0, 1800.0, -0.003),
         ("KD", "kd", 25.0, 1.0, -8.0),
@@ -59,8 +68,10 @@ def test_production_scoring_composition():
 
 
 def test_production_objective_composition():
-    model = main.create_scoring_model()
-    objective = main.create_objective_engine(model)
+    model = scoring_factory.create_scoring_model(config.scoring)
+    objective = objective_factory.create_objective_engine(
+        config.objective, model, team_size=config.event.team_size
+    )
     assert [(type(r).__name__, r.weight) for r in objective.restrictions] == [
         ("PowerBalanceRestriction", 55.0),
         ("EloBalanceRestriction", 10.0),
@@ -90,7 +101,7 @@ def test_production_objective_composition():
 
 
 def test_production_pipeline_composition():
-    phases = main.create_pipeline().phases
+    phases = pipeline_factory.create_pipeline(config.pipeline).phases
     assert [
         (
             p.name,
@@ -125,7 +136,7 @@ def test_production_pipeline_composition():
 
 
 def test_production_stable_configuration_and_restart_composition():
-    assert asdict(main.STABLE_OPTIMIZATION_CONFIG) == {
+    assert asdict(config.stable) == {
         "target_score": 100.0,
         "maximum_restarts": 150,
         "minimum_restarts": 30,
@@ -139,10 +150,12 @@ def test_production_stable_configuration_and_restart_composition():
         "stop_on_perfect_score": False,
         "perfect_score": 100.0,
     }
-    balancer = main.create_balancer(main.create_scoring_model())
+    balancer = composition_root.create_balancer(
+        config, scoring_factory.create_scoring_model(config.scoring)
+    )
     stable = balancer.stable_optimizer
-    assert stable.config is main.STABLE_OPTIMIZATION_CONFIG
-    assert stable.selector.config is main.STABLE_OPTIMIZATION_CONFIG
+    assert stable.config is config.stable
+    assert stable.selector.config is config.stable
     restart = stable.restart_factory
     assert (
         restart.separated_seed_level,
@@ -151,20 +164,26 @@ def test_production_stable_configuration_and_restart_composition():
         restart.maximum_swaps,
         restart.partial_redistribution_ratio,
     ) == (1, 1, 1, 6, 0.50)
-    assert (main.NUMBER_OF_TEAMS, main.TEAM_SIZE, main.EXPECTED_PLAYER_COUNT) == (
+    assert (
+        config.event.number_of_teams,
+        config.event.team_size,
+        config.event.expected_player_count,
+    ) == (
         4,
         5,
         20,
     )
-    assert main.OPTIMIZATION_MODE is OptimizationMode.GLOBAL
+    assert config.optimization_mode is OptimizationMode.GLOBAL
     # GLOBAL is currently orchestrated outside LanBalancer, after this warm start.
     assert balancer.optimization_mode is OptimizationMode.STABLE
 
 
 def test_production_application_collaborators():
-    scoring = main.create_scoring_model()
-    objective = main.create_objective_engine(scoring)
-    balancer = main.create_balancer(scoring, objective)
+    scoring = scoring_factory.create_scoring_model(config.scoring)
+    objective = objective_factory.create_objective_engine(
+        config.objective, scoring, team_size=config.event.team_size
+    )
+    balancer = composition_root.create_balancer(config, scoring, objective)
     assert type(balancer.importer).__name__ == "CssStatsImporter"
     assert balancer.importer.strict is True
     generator = balancer.generator
@@ -187,7 +206,7 @@ def test_production_application_collaborators():
 
 
 def test_production_global_configuration_and_bound_composition():
-    assert asdict(main.GLOBAL_OPTIMIZATION_CONFIG) == {
+    assert asdict(config.global_search) == {
         "maximum_nodes": 500_000,
         "maximum_evaluations": 100_000,
         "maximum_elapsed_seconds": 60.0,
@@ -203,11 +222,15 @@ def test_production_global_configuration_and_bound_composition():
         "require_proof": False,
         "base_seed": 2026,
     }
-    objective = main.create_objective_engine(main.create_scoring_model())
-    optimizer = main.create_global_optimizer(objective)
+    objective = objective_factory.create_objective_engine(
+        config.objective,
+        scoring_factory.create_scoring_model(config.scoring),
+        team_size=config.event.team_size,
+    )
+    optimizer = global_factory.create_global_optimizer(config, objective)
     # These constructor parameters have no public accessors in v0.6. This narrow
     # configuration assertion is intentional; search internals are not snapshotted.
-    assert optimizer._config is main.GLOBAL_OPTIMIZATION_CONFIG
+    assert optimizer._config is config.global_search
     assert optimizer._objective_engine is objective
     bound = optimizer._bound_calculator
     assert {

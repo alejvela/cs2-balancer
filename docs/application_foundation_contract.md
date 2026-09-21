@@ -3,7 +3,7 @@
 SCRUM-37 freezes the published v0.6.0 baseline at
 `c93ae772837d4a4c20173a516fd2f3a78e7ad71b` before SCRUM-38..42.
 This document records that historical characterization. For the implemented
-SCRUM-38..41 architecture and SCRUM-43 acceptance, see
+SCRUM-38..42 architecture and SCRUM-43 acceptance, see
 [application architecture](application_architecture.md).
 
 ## Historical boundary and current architecture
@@ -30,12 +30,12 @@ FAST / STABLE / GLOBAL
 common application result
 ```
 
-`main.py` now calls `BalancingApplication` and retains bootstrap, presentation,
-export and compatibility wrappers. Final thin-entrypoint cleanup remains
-SCRUM-42. Application code may depend on the engine; the engine must not depend
-on `main.py`, CLI, presentation concerns, or filesystem bootstrap details.
-Characterization tests still use compatibility wrappers from `main.py`; those
-delegate to typed configuration/factories and application GLOBAL orchestration.
+`main.py` calls `BalancingApplication` once and retains bootstrap, validation,
+presentation and export. Application code may depend on the engine; the engine
+must not depend on `main.py`, CLI, presentation or filesystem bootstrap details.
+Characterization tests now use typed factories, composition and
+`ApplicationGlobalRunner` directly. The fingerprints and assertions still protect
+the same behavioral contract; temporary main wrappers have been removed.
 
 v0.7 is a **behavior-preserving refactor**. Deliberate engine semantic changes
 belong to v0.8; operator experience and CLI belong to v0.9. Public API acceptance
@@ -45,8 +45,8 @@ Do not regenerate baselines merely to make a refactor pass.
 ## Production composition protected here
 
 `tests/acceptance/test_application_composition_contract.py` checks the actual
-objects obtained through `main.py`'s compatibility wrappers (now backed by
-configuration factories), including defaults inherited from their constructors:
+objects obtained through configuration factories and composition, including
+defaults inherited from their constructors:
 
 - Scoring: ELO/KD/ADR/KPR/Winrate/HS weights 40/25/15/10/7/3; logistic
   `(midpoint, steepness)` values `(1800, -0.003)`, `(1, -8)`, `(75, -0.10)`,

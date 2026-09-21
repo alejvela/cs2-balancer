@@ -101,19 +101,18 @@ even when GLOBAL is selected. Engine-only runner returns are still rejected.
 but the normal execution path no longer raises it; GLOBAL now has a default
 implementation rather than an absent dependency.
 
-`LegacyGlobalRunner` and its `last_search_result` have been removed. The entrypoint
-prints GLOBAL metrics directly from `GlobalReportResult`. `main` retains only
-compatibility forwarding helpers for metrics, structural factories and the old
-`run_global_optimization` tuple contract, plus an imported `GlobalReportResult`
-alias. The tuple/title/factory overrides exist solely for legacy callers and
-SCRUM-37's optimizer substitution test; the public application API returns only
-the report. Implementation and final verification live in application. The small
-player attribute/nickname access helpers also moved there without semantic changes.
+`main()` imports CSV data, builds the request and calls the service once. GLOBAL
+console output consumes `GlobalReportResult`; no raw search result is retained by
+the entrypoint. Factory/metrics/GLOBAL compatibility wrappers and config aliases
+have been removed. Characterization uses the real factories and
+`ApplicationGlobalRunner`, including optimizer substitution for score rejection.
 
-`main()` imports CSV data, builds the request and calls the service once. A small
-composition callback retains that run's collaborators for export/reporting,
-avoiding a second engine graph. FACEIT, bootstrap, console and export handling
-remain at the entrypoint. The service itself performs no file import or export.
+The composition-retention callback has been removed from bootstrap. Reporting
+constructs its own configured scoring model and `HtmlExporterV2` through
+`configuration.reporting_factory`, without constructing another engine graph.
+FACEIT, bootstrap, console and export remain at the entrypoint. The service itself
+performs no file import or export. Its existing injectable composition factory
+remains available for isolated application tests and callers.
 
 Tests reuse SCRUM-37 fixtures/fingerprints for FAST/STABLE, compare scores,
 metadata, restrictions and history excluding elapsed time, and exercise mode
@@ -124,7 +123,7 @@ identity, score tolerance, metric proxies and serialization. A subprocess reject
 imports of `main` while executing real GLOBAL through the default application.
 
 SCRUM-41 moved production GLOBAL execution into application without changing
-the request/result boundary. SCRUM-42 owns the final thin entrypoint;
+the request/result boundary. SCRUM-42 completes the thin entrypoint;
 engine hardening remains v0.8 and CLI remains v0.9. Existing restart-validation
 differences, GLOBAL flag behavior and player/history identity semantics are
-unchanged. This ticket does not declare v0.7 complete.
+unchanged. Release preparation and the final v0.7 release remain separate work.

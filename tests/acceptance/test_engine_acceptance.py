@@ -6,9 +6,12 @@ import pytest
 
 from application.lan_balancer import LanBalancer
 from application.results.optimization_result import OptimizationResult
+from configuration.application_config import ApplicationConfig
+from configuration.objective_factory import create_objective_engine
+from configuration.pipeline_factory import create_pipeline
+from configuration.scoring_factory import create_scoring_model
 from generators.snake_draft_generator import SnakeDraftGenerator
 from importers.csstats_importer import CssStatsImporter
-from main import create_objective_engine, create_pipeline, create_scoring_model
 from models.player import Player
 from models.team import Team
 from objective.objective_engine import ObjectiveEngine
@@ -96,8 +99,11 @@ def stable_config() -> StableOptimizationConfig:
 def compose_balancer(
     mode: OptimizationMode,
 ) -> tuple[LanBalancer, ObjectiveEngine, SnakeDraftGenerator]:
-    scoring_model = create_scoring_model()
-    objective_engine = create_objective_engine(scoring_model)
+    config = ApplicationConfig.production_defaults()
+    scoring_model = create_scoring_model(config.scoring)
+    objective_engine = create_objective_engine(
+        config.objective, scoring_model, team_size=config.event.team_size
+    )
     generator = SnakeDraftGenerator(
         scoring_model=scoring_model,
         team_name_prefix="Acceptance Team",
@@ -106,7 +112,7 @@ def compose_balancer(
     )
     local_optimizer = LocalOptimizer(
         evaluator=MoveEvaluator(objective=objective_engine),
-        pipeline=create_pipeline(),
+        pipeline=create_pipeline(config.pipeline),
     )
     config = stable_config()
     stable_optimizer = StableOptimizer(

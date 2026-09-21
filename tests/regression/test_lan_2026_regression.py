@@ -13,8 +13,11 @@ from collections.abc import Sequence
 
 import pytest
 
+from configuration.application_config import ApplicationConfig
+from configuration.objective_factory import create_objective_engine
+from configuration.pipeline_factory import create_pipeline
+from configuration.scoring_factory import create_scoring_model
 from generators.snake_draft_generator import SnakeDraftGenerator
-from main import create_objective_engine, create_pipeline, create_scoring_model
 from models.player import Player
 from models.team import Team
 from objective.objective_engine import ObjectiveEngine
@@ -64,8 +67,11 @@ def regression_stable_config() -> StableOptimizationConfig:
 
 
 def compose_engine():
-    scoring_model = create_scoring_model()
-    objective_engine = create_objective_engine(scoring_model)
+    config = ApplicationConfig.production_defaults()
+    scoring_model = create_scoring_model(config.scoring)
+    objective_engine = create_objective_engine(
+        config.objective, scoring_model, team_size=config.event.team_size
+    )
     generator = SnakeDraftGenerator(
         scoring_model=scoring_model,
         team_name_prefix="LAN 2026 Team",
@@ -74,7 +80,7 @@ def compose_engine():
     )
     local_optimizer = LocalOptimizer(
         evaluator=MoveEvaluator(objective=objective_engine),
-        pipeline=create_pipeline(),
+        pipeline=create_pipeline(config.pipeline),
     )
     config = regression_stable_config()
     stable_optimizer = StableOptimizer(
@@ -109,10 +115,7 @@ def assert_structural_invariants(
         player.steam_id for player in players
     }
     assert len({player.steam_id for player in output_players}) == len(players)
-    assert all(
-        sum(player.seed == 1 for player in team.players) <= 1
-        for team in teams
-    )
+    assert all(sum(player.seed == 1 for player in team.players) <= 1 for team in teams)
 
     fresh = objective_engine.evaluate(teams)
     assert fresh.penalty == pytest.approx(0.0, abs=SCORE_TOLERANCE)
@@ -148,9 +151,7 @@ def test_scoring_and_initial_generation_match_frozen_fingerprint() -> None:
     players = load_lan_2026_players()
     scoring_model, objective_engine, generator, _ = compose_engine()
 
-    assert set(baseline["player_powers"]) == {
-        player.steam_id for player in players
-    }
+    assert set(baseline["player_powers"]) == {player.steam_id for player in players}
     for player in players:
         assert scoring_model.power(player) == pytest.approx(
             baseline["player_powers"][player.steam_id],

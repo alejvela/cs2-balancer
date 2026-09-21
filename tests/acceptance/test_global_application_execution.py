@@ -2,23 +2,20 @@
 
 import subprocess
 import sys
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-import main
 from application.balancing_application import BalancingApplication
 from application.balancing_request import BalancingRequest
 from application.results.base_report_result import BaseReportResult
 from application.results.global_report_result import GlobalReportResult
-from configuration.application_config import ApplicationConfig
 from optimizer.modes.optimization_mode import OptimizationMode
 from tests.acceptance import test_application_behavior_contract as contract
 from tests.acceptance.test_balancing_application_api import without_timing
-from tests.acceptance.test_engine_acceptance import canonical_membership, stable_config
+from tests.acceptance.test_engine_acceptance import canonical_membership
 
-legacy_run = contract.composed_run
+characterized_run = contract.composed_run
 
 
 @pytest.mark.parametrize(
@@ -28,23 +25,16 @@ legacy_run = contract.composed_run
         (500, contract.GLOBAL_TEAMS, "EVALUATION_LIMIT"),
     ],
 )
-def test_default_global_matches_characterized_legacy_execution(
-    legacy_run,
-    monkeypatch,
+def test_default_global_matches_characterized_execution(
+    characterized_run,
     node_budget,
     fingerprint,
     stop_reason,
 ):
-    players, scoring, objective, warm_start = legacy_run(OptimizationMode.GLOBAL)
-    search_config = replace(main.GLOBAL_OPTIMIZATION_CONFIG, maximum_nodes=node_budget)
-    monkeypatch.setattr(main, "GLOBAL_OPTIMIZATION_CONFIG", search_config)
-    expected, search = main.run_global_optimization(
-        players, scoring, objective, warm_start
-    )
-    config = replace(
-        ApplicationConfig.production_defaults(),
-        stable=stable_config(),
-        global_search=search_config,
+    players, scoring, objective, warm_start = characterized_run(OptimizationMode.GLOBAL)
+    config = contract.contract_config(maximum_nodes=node_budget)
+    expected = contract.run_characterized_global(
+        players, scoring, objective, warm_start, maximum_nodes=node_budget
     )
     # No runner injection: this must perform real GLOBAL search.
     actual = BalancingApplication(config).run(
@@ -82,12 +72,12 @@ def test_default_global_matches_characterized_legacy_execution(
         "stop_reason",
         "initial_incumbent_score",
     ):
-        assert getattr(actual, field) == getattr(search, field)
+        assert getattr(actual, field) == getattr(expected, field)
     assert actual.global_stop_reason == stop_reason
     assert actual.initial_score == warm_start.final_score
     assert actual.iterations == 0
     assert actual.history == ()
-    assert actual.total_evaluations == search.complete_solutions_evaluated
+    assert actual.total_evaluations == expected.complete_solutions_evaluated
     assert without_timing(actual.metadata) == without_timing(expected.metadata)
     assert without_timing(actual.metadata["stable_optimization"]) == without_timing(
         warm_start.metadata["stable_optimization"],

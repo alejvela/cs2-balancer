@@ -28,7 +28,7 @@ from tests.acceptance.test_engine_acceptance import (
 )
 from tests.unit.test_composition_root import players, small_config
 
-legacy_run = contract.composed_run
+characterized_run = contract.composed_run
 
 
 def acceptance_config():
@@ -54,11 +54,15 @@ def acceptance_config():
         (OptimizationMode.GLOBAL, contract.GLOBAL_TEAMS),
     ],
 )
-def test_public_flow_preserves_characterized_report(legacy_run, mode, fingerprint):
-    source, scoring, objective, expected = legacy_run(mode)
+def test_public_flow_preserves_characterized_report(
+    characterized_run, mode, fingerprint
+):
+    source, scoring, objective, expected = characterized_run(mode)
     if mode is OptimizationMode.GLOBAL:
-        # Reference only: reuse the frozen legacy scenario, not another snapshot.
-        expected, _ = main.run_global_optimization(source, scoring, objective, expected)
+        # Reference: the characterized application owner, with unchanged fingerprints.
+        expected = contract.run_characterized_global(
+            source, scoring, objective, expected
+        )
     actual = BalancingApplication(acceptance_config()).run(
         BalancingRequest(
             source,
@@ -222,22 +226,22 @@ def test_html_exporter_accepts_common_public_result(accepted_flows, tmp_path, fl
 @pytest.mark.parametrize("mode", [OptimizationMode.FAST, OptimizationMode.GLOBAL])
 def test_main_bootstrap_exports_application_result_offline(monkeypatch, tmp_path, mode):
     config = small_config()
-    monkeypatch.setattr(main, "APPLICATION_CONFIG", config)
     destination = tmp_path / "bootstrap.html"
-    for name, value in {
-        "NUMBER_OF_TEAMS": 2,
-        "TEAM_SIZE": 2,
-        "EXPECTED_PLAYER_COUNT": 4,
-        "OPTIMIZATION_MODE": mode,
-        "STABLE_OPTIMIZATION_CONFIG": config.stable,
-        "GLOBAL_OPTIMIZATION_CONFIG": config.global_search,
-        "REPORT_TITLE": "Bootstrap acceptance",
-        "OUTPUT_REPORT_FILE": destination,
-        "DEBUG_PLAYERS": False,
-        "DEBUG_FINAL_TEAMS": False,
-    }.items():
-        monkeypatch.setattr(main, name, value)
-    monkeypatch.setattr(main, "resolve_players_file", lambda: tmp_path / "unused.csv")
+    config = replace(
+        config,
+        optimization_mode=mode,
+        event=replace(config.event, report_title="Bootstrap acceptance"),
+        paths=replace(config.paths, output_report=destination),
+        faceit=replace(config.faceit, run_import=False),
+        debug_players=False,
+        debug_final_teams=False,
+    )
+    monkeypatch.setattr(
+        ApplicationConfig, "production_defaults", classmethod(lambda cls: config)
+    )
+    monkeypatch.setattr(
+        main, "resolve_players_file", lambda config: tmp_path / "unused.csv"
+    )
     monkeypatch.setattr(main.CssStatsImporter, "load", lambda self, source: players())
 
     def forbidden(*args, **kwargs):
@@ -246,7 +250,7 @@ def test_main_bootstrap_exports_application_result_offline(monkeypatch, tmp_path
         )
 
     monkeypatch.setattr(main, "run_faceit_import", forbidden)
-    monkeypatch.setattr(main, "run_global_optimization", forbidden)
+    assert not hasattr(main, "run_global_optimization")
     requests, reports, console_results = [], [], []
     original_export = HtmlExporterV2.export
 

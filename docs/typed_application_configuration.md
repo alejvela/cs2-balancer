@@ -37,12 +37,11 @@ factor. The scoring factory creates a fresh model for each scoring model. SCRUM-
 freeze those values; duplicating the mapping here would create avoidable drift.
 
 `ApplicationConfig.production_defaults()` supplies the production source of truth.
-`main.APPLICATION_CONFIG` and its derived aliases preserve the entrypoint contract,
-including the identical STABLE/GLOBAL objects. Factories accept explicit config
-arguments and do not import `main`. GLOBAL bound weights read the objective weights,
-and its tolerance reads the GLOBAL config. No duplicate bound config is needed.
-GLOBAL orchestration and `GlobalReportResult` now live in application (SCRUM-41);
-`main.py` retains compatibility forwarding wrappers.
+`main()` creates this config locally and passes it explicitly to bootstrap,
+application and reporting. Factories accept explicit config arguments and never
+import `main`. GLOBAL bound weights read the objective weights, and its tolerance
+reads the GLOBAL config. No duplicate bound config is needed. GLOBAL orchestration
+and `GlobalReportResult` live in application.
 
 Validation covers positive event dimensions and phase iterations; nonnegative
 weights and FACEIT limits; unique scoring/phase names; a nonempty pipeline;
@@ -57,14 +56,13 @@ duplicate all constructor-specific validation of restriction/strategy classes.
 Existing engine config validation is neither relaxed nor strengthened. Some
 typed configurations can therefore still be rejected during engine construction.
 
-The legacy aliases are captured at import time; replacing `APPLICATION_CONFIG`
-at runtime is not a supported application configuration API. Call
-`BalancingApplication(config)` for public execution or
-`create_balancing_composition(config)` for explicit composition. Compatibility
-wrappers in `main.py` translate legacy aliases into a config snapshot. Ignored
-GLOBAL flags and warm-start/report behavior remain unchanged.
+Customize the local config construction in `main()` using `dataclasses.replace`
+for the supported developer workflow; see the README example. No import-time
+aliases or config reconstruction remain. Use `BalancingApplication(config)` for
+reusable execution or `create_balancing_composition(config)` for explicit
+composition. Ignored GLOBAL flags and warm-start/report behavior remain unchanged.
 
 Unit tests cover defaults, derived values, frozen nested objects, sequence copies,
 default-factory isolation, independent mutable collaborators and validation.
-The untouched SCRUM-37 acceptance tests remain the independent behavioral guard.
+SCRUM-37 acceptance tests retain their fingerprints through the real owners.
 Coverage now includes the `configuration` package.
