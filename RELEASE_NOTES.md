@@ -1,3 +1,93 @@
+# cs2-balancer v0.7.0 — Application Foundation
+
+**Release candidate — not published.** Project metadata identifies this candidate
+as `0.7.0`; `pyproject.toml` remains the sole package-version source of truth.
+The candidate head commit is the review target. After approval and merge,
+SCRUM-44 will tag and publish the SCRUM-45 merge commit. No tag or GitHub Release
+is created during candidate preparation.
+
+## Developer-facing changes
+
+v0.7 changes where composition and orchestration live, not how teams are scored
+or selected. Production weights, normalizers, activity, pipeline phases, restart
+settings, GLOBAL budgets, seeds and tolerances retain their characterized behavior.
+Tournament Analytics was delivered in v0.6 and is preserved, not a new v0.7 feature.
+
+- **Typed configuration:** `ApplicationConfig.production_defaults()` centralizes
+  event settings, paths, FACEIT, scoring, objective, pipeline, restart, STABLE,
+  GLOBAL and debug/operator settings. Customize immutable Python values with
+  `dataclasses.replace`; no CLI or YAML configuration loader is introduced.
+- **Explicit composition:** real scoring, objective, pipeline, optimizer and GLOBAL
+  factories build collaborators from typed inputs. The composition root creates
+  a fresh execution graph for each application run.
+- **Programmatic API:** `BalancingApplication.run(BalancingRequest(...))` returns
+  `BaseReportResult`. Callers supply a `Sequence[Player]`, a team count and an
+  `OptimizationMode`, with optional title and metadata. CSV paths and FACEIT I/O
+  stay outside this API.
+- **Execution modes:** FAST, STABLE and GLOBAL share that request/result boundary.
+  PREASSIGNED evaluation is detected from player assignments by the application
+  flow and bypasses optimization, including when GLOBAL is requested.
+- **Application-owned GLOBAL:** STABLE warm start → GLOBAL search → final score
+  verification → `GlobalReportResult`. Orchestration, verification and report
+  adaptation belong to application, not `main.py`.
+- **Common results:** `BaseReportResult` is the consumer boundary; existing
+  `OptimizationResult`, `EvaluationResult` and `GlobalReportResult` retain their
+  concrete semantics. No replacement result type or raw-search API is introduced.
+- **Thin entrypoint:** `python main.py` remains supported for developers/operators.
+  It handles bootstrap, optional FACEIT refresh, CSV import, request construction,
+  one application call, validation, console output, HTML export and error handling.
+  The mode banner now uses the returned report and appears after execution.
+- **Reporting:** the reporting factory builds configured presentation scoring and
+  `HtmlExporterV2` independently of execution composition. Bootstrap no longer
+  retains internal composition through a callback or builds another engine for
+  export. Offline acceptance verifies equivalent HTML and console presentation.
+
+## Migration from temporary entrypoint helpers
+
+The migration seams in `main.py` were not a stable public API. Code that imported
+any of these removed helpers must migrate:
+
+- `create_scoring_model`, `create_objective_engine`, `create_pipeline`, `create_balancer`;
+- `create_global_metrics`, `create_global_problem`, `create_global_optimizer`,
+  `run_global_optimization`.
+
+Import-time configuration aliases and `_composition_config` have also been
+removed. Setting old globals such as `OPTIMIZATION_MODE`, `RUN_FACEIT_IMPORT` or
+`NUMBER_OF_TEAMS` no longer configures execution. Build an `ApplicationConfig`
+and a `BalancingRequest`, then call `BalancingApplication` and consume its
+`BaseReportResult`. Advanced composition callers can use the explicit factories
+in `configuration/`; they do not need to import `main`.
+
+For manual execution, continue using `python main.py` and customize the local
+config construction with `dataclasses.replace`, as shown in the
+[README](README.md#balancing-application-execution). FACEIT refresh remains enabled
+by default and retains `FACEIT_API_KEY` semantics. Disabling it reuses the generated
+CSV. No credentials or live FACEIT calls are required by the offline test suite.
+
+See the [architecture](docs/application_architecture.md),
+[application API](docs/balancing_application_api.md),
+[typed configuration](docs/typed_application_configuration.md) and
+[composition](docs/composition_root.md) contracts for signatures and ownership.
+
+## Validation and deliberately deferred work
+
+Candidate validation covers characterized scores/memberships, production
+composition, the public API, GLOBAL retention/improvement and score rejection,
+all four execution flows, real HTML export and offline CSV-to-report bootstrap.
+Frozen LAN and tournament regression fixtures remain unchanged.
+
+This release does not fix GLOBAL algorithms or establish stronger proof guarantees.
+Engine Contract Hardening remains v0.8 work: ignored `use_incumbent`/pruning flags,
+inactive deterministic/base-seed settings, incumbent validation, bound admissibility,
+proof semantics, timing/budget semantics, Player identity, MoveEvaluator transaction
+safety, STABLE restart/result semantics and non-finite policy. Operator Experience
+& CLI remains v0.9; Stable CS2 LAN Toolkit remains the v1.0 direction.
+
+The historical notes below are preserved as records of their respective releases,
+including the preparation status and deferred work recorded at that time.
+
+---
+
 # cs2-balancer v0.6.0
 
 These notes describe v0.6.0 in preparation; they do not announce a public release.
