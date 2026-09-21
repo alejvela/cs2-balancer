@@ -2,8 +2,9 @@
 
 SCRUM-43 consolidates the application foundation implemented through SCRUM-41,
 on baseline `074e769e8d68ad7e20cbbe7a97cb98c27b7cf30b`. This is acceptance and
-architecture documentation, not a final v0.7 release declaration. SCRUM-42's
-final entrypoint cleanup is still pending.
+architecture documentation, not a final v0.7 release declaration. SCRUM-42
+completes the thin production entrypoint on SCRUM-43 merge
+`4ca5a370bef548b2b8ca835b6b8bce8e1f4ba3ba`.
 
 ## Purpose and boundaries
 
@@ -154,21 +155,36 @@ result's title and does not override that exporter setting.
 `python main.py` remains supported in v0.7. `main.py` is an entrypoint; the reusable
 application API is `BalancingApplication`.
 
-`main` retains file resolution, optional FACEIT refresh, CSV import, request
-construction, console presentation, HTML export and compatibility wrappers/aliases.
-It calls the application once and retains that run's composition via a callback
-for reporting. GLOBAL console output receives `GlobalReportResult`; production
-bootstrap does not invoke the legacy GLOBAL tuple wrapper in parallel.
+`main` retains file resolution, optional FACEIT refresh, CSV import, roster/result
+integrity checks, request construction, console presentation, HTML export and
+existing error/exit handling. It creates one local `ApplicationConfig` from
+`production_defaults()` and calls `BalancingApplication.run()` once. FAST, STABLE,
+GLOBAL and PREASSIGNED all use that path; mode detection belongs to `LanBalancer`.
+The mode banner is printed from the returned report, after execution. Its text
+is unchanged; failed execution no longer prints a speculative mode banner.
+Bootstrap adds the detected `mode` to report metadata before presentation/export,
+preserving the exported metadata without detecting PREASSIGNED itself.
 
-The legacy factory and `run_global_optimization` wrappers forward to the new
-owners for existing callers and characterization tests. Import-time aliases are
-compatibility mechanisms, not an alternative reusable config API. Final removal
-or simplification belongs to SCRUM-42, which remains pending.
+The entrypoint has no engine factories, GLOBAL forwarding wrappers, config aliases
+or composition-retention callback. `configuration.reporting_factory` constructs
+only a fresh configured scoring model and `HtmlExporterV2` for console/HTML use.
+It does not construct an objective, pipeline, optimizer or balancing engine.
+Offline tests compare this presentation with the execution composition's exporter
+byte for byte, including custom scoring and all result modes. GLOBAL console output
+accepts only the public `GlobalReportResult`.
+
+The existing output checks for roster preservation, non-decreasing score and
+preassigned membership remain bootstrap checks, with their original errors. They
+do not select, generate or evaluate PREASSIGNED teams. The application API and
+result contract are unchanged. Characterization calls real factories and
+`ApplicationGlobalRunner`, retaining the reviewed membership/score fingerprints.
 
 Offline bootstrap acceptance calls real `main.main()` for FAST and GLOBAL with
 fake file resolution and importer data, real application execution and real HTML
 export. It asserts one application run, exit code zero and correct report
-consumers, and forbids live FACEIT and legacy GLOBAL orchestration. It does not
+consumers, and forbids live FACEIT. `test_main_entrypoint.py` additionally protects the
+absence of engine factories and a second GLOBAL route, FACEIT config/file flow,
+report equivalence, roster rejection and existing error/exit behavior. It does not
 run the default live-refresh shell command or require credentials/runtime CSVs.
 
 ## Evidence and specialized contracts

@@ -1,4 +1,4 @@
-"""Small reviewed v0.6 outputs through the real main.py composition.
+"""Small reviewed v0.6 outputs through the production composition root.
 
 Only search budgets are reduced, using the existing acceptance STABLE config.
 Production budgets are protected separately by the composition contract.
@@ -9,8 +9,12 @@ from types import SimpleNamespace
 
 import pytest
 
-import main
+from application.balancing_request import BalancingRequest
+from application.global_execution import ApplicationGlobalRunner
 from application.results.report_mode import ReportMode
+from configuration import global_factory
+from configuration.application_config import ApplicationConfig
+from configuration.composition_root import create_balancing_composition
 from optimizer.modes.optimization_mode import OptimizationMode
 from tests.acceptance.test_engine_acceptance import (
     assert_application_score_consistency,
@@ -44,28 +48,45 @@ def expected_membership(numbers):
     return tuple(tuple(f"SYNTHETIC-{n:04d}" for n in team) for team in numbers)
 
 
-@pytest.fixture
-def composed_run(monkeypatch):
-    monkeypatch.setattr(main, "STABLE_OPTIMIZATION_CONFIG", stable_config())
-    monkeypatch.setattr(
-        main,
-        "GLOBAL_OPTIMIZATION_CONFIG",
-        replace(
-            main.GLOBAL_OPTIMIZATION_CONFIG,
-            maximum_nodes=500,
-            maximum_evaluations=50,
-            maximum_elapsed_seconds=None,
-        ),
+def contract_config(mode=OptimizationMode.GLOBAL, **search_overrides):
+    config = ApplicationConfig.production_defaults()
+    search = dict(
+        maximum_nodes=500, maximum_evaluations=50, maximum_elapsed_seconds=None
+    )
+    search.update(search_overrides)
+    return replace(
+        config,
+        optimization_mode=mode,
+        stable=stable_config(),
+        global_search=replace(config.global_search, **search),
     )
 
+
+def run_characterized_global(
+    players, scoring, objective, warm_start, **search_overrides
+):
+    composition = create_balancing_composition(contract_config(**search_overrides))
+    # Preserve the exact scoring/objective collaborators used for the warm start.
+    composition = replace(
+        composition, scoring_model=scoring, objective_engine=objective
+    )
+    request = BalancingRequest(
+        players, 4, OptimizationMode.GLOBAL, title=warm_start.title
+    )
+    return ApplicationGlobalRunner().run(
+        request=request, composition=composition, warm_start=warm_start
+    )
+
+
+@pytest.fixture
+def composed_run():
     def run(mode):
-        monkeypatch.setattr(main, "OPTIMIZATION_MODE", mode)
-        scoring = main.create_scoring_model()
-        objective = main.create_objective_engine(scoring)
-        balancer = main.create_balancer(scoring, objective)
+        composition = create_balancing_composition(contract_config(mode))
         players = synthetic_players()
-        result = balancer.run_players(players, 4, metadata={"contract": "SCRUM-37"})
-        return players, scoring, objective, result
+        result = composition.balancer.run_players(
+            players, 4, metadata={"contract": "SCRUM-37"}
+        )
+        return players, composition.scoring_model, composition.objective_engine, result
 
     return run
 
@@ -160,17 +181,24 @@ def test_global_orchestration_and_report_contract(
 ):
     players, scoring, objective, warm_start = composed_run(OptimizationMode.GLOBAL)
     assert warm_start.metadata["optimization_mode"] == "stable"
-    monkeypatch.setattr(
-        main,
-        "GLOBAL_OPTIMIZATION_CONFIG",
-        replace(
-            main.GLOBAL_OPTIMIZATION_CONFIG,
-            maximum_nodes=node_budget,
-        ),
+    searches = []
+    factory = global_factory.create_global_optimizer
+
+    def observe(config, engine):
+        optimizer = factory(config, engine)
+
+        def optimize(**kwargs):
+            search = optimizer.optimize(**kwargs)
+            searches.append(search)
+            return search
+
+        return SimpleNamespace(optimize=optimize)
+
+    monkeypatch.setattr(global_factory, "create_global_optimizer", observe)
+    result = run_characterized_global(
+        players, scoring, objective, warm_start, maximum_nodes=node_budget
     )
-    result, search = main.run_global_optimization(
-        players, scoring, objective, warm_start
-    )
+    (search,) = searches
     fresh = assert_shared_invariants(players, result.teams, objective)
     assert_application_score_consistency(result, fresh)
     assert canonical_membership(result.teams) == expected_membership(teams)
@@ -220,19 +248,18 @@ def test_global_application_rejects_inconsistent_final_score(composed_run, monke
         teams=warm_start.teams, score=warm_start.final_score + 1
     )
     monkeypatch.setattr(
-        main,
+        global_factory,
         "create_global_optimizer",
-        lambda **kwargs: SimpleNamespace(
+        lambda *args: SimpleNamespace(
             optimize=lambda **kwargs: inconsistent,
         ),
     )
     with pytest.raises(RuntimeError, match="GLOBAL devolvió un score inconsistente"):
-        main.run_global_optimization(players, scoring, objective, warm_start)
+        run_characterized_global(players, scoring, objective, warm_start)
 
 
-def test_global_currently_ignores_inactive_config_switches(composed_run, monkeypatch):
+def test_global_currently_ignores_inactive_config_switches(composed_run):
     players, scoring, objective, warm_start = composed_run(OptimizationMode.GLOBAL)
-    baseline_config = main.GLOBAL_OPTIMIZATION_CONFIG
     # These fields exist but do not control the v0.6 search. Deliberately do not
     # turn their names into promised behavior; making them effective is v0.8 work.
     for field, value in (
@@ -244,16 +271,8 @@ def test_global_currently_ignores_inactive_config_switches(composed_run, monkeyp
         ("deterministic", False),
         ("base_seed", 7),
     ):
-        monkeypatch.setattr(
-            main,
-            "GLOBAL_OPTIMIZATION_CONFIG",
-            replace(
-                baseline_config,
-                **{field: value},
-            ),
-        )
-        report, search = main.run_global_optimization(
-            players, scoring, objective, warm_start
+        report = run_characterized_global(
+            players, scoring, objective, warm_start, **{field: value}
         )
         assert canonical_membership(report.teams) == expected_membership(
             GLOBAL_TEAMS
@@ -262,7 +281,7 @@ def test_global_currently_ignores_inactive_config_switches(composed_run, monkeyp
             94.43911302364742, rel=0, abs=1e-6
         ), field
         assert report.initial_score == warm_start.final_score, field
-        assert search.stop_reason == "EVALUATION_LIMIT", field
-        assert search.optimality_proven is False, field
+        assert report.stop_reason == "EVALUATION_LIMIT", field
+        assert report.optimality_proven is False, field
         # The adapter advertises the enum property, not the configuration field.
         assert report.metadata["optimization_deterministic"] is True, field

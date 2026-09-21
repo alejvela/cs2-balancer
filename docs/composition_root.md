@@ -5,7 +5,7 @@ public execution and acceptance matrix. This document details composition;
 the baseline below records the original SCRUM-39 step.
 
 Baseline: `4a4036919329e14fdc7e9383973ec03898dfb7f4` (SCRUM-38).
-This is an incremental v0.7 step; v0.7 is not complete.
+This records the composition step; it does not declare a v0.7 release.
 
 ```text
 ApplicationConfig
@@ -30,7 +30,7 @@ composition = create_balancing_composition(config)
 Use `dataclasses.replace` to customize the config before composition. The root
 does not import `main`, read module aliases, import CSV data, access FACEIT, run
 optimization or export a report. Paths and FACEIT bootstrap remain entrypoint
-concerns for now.
+concerns.
 
 `BalancingComposition` is a frozen/slotted holder of `config`, `scoring_model`,
 `objective_engine` and `balancer`. The local optimizer and its pipeline are
@@ -56,14 +56,12 @@ Factories:
   plus the optimizer and bound from config and a shared objective. The bound uses
   objective weights and GLOBAL tolerance; no duplicate defaults are introduced.
 
-`BalancingApplication` uses the root once per request; `main()` now calls that
-service and retains the run composition for reporting. See the
-[public application API](balancing_application_api.md). Temporary wrappers keep `create_scoring_model`,
-`create_objective_engine`, `create_pipeline`, `create_balancer`,
-`create_global_problem` and `create_global_optimizer` callable with the SCRUM-37
-signatures. `_composition_config()` translates legacy mode, optimizer configs and
-event aliases at this boundary, preserving the characterization tests' overrides.
-New callers use explicit config rather than these wrappers.
+`BalancingApplication` uses the root once per request; `main()` calls that service
+without retaining internal composition. See the [public application API](balancing_application_api.md).
+The temporary main factory wrappers and config aliases have been removed.
+`configuration.reporting_factory.create_reporting_components(config)` constructs
+only scoring and `HtmlExporterV2` for presentation from the same explicit config.
+No second execution graph or service locator is needed.
 
 GLOBAL selection still configures `LanBalancer` internally as STABLE. The
 application obtains that warm start and its default `ApplicationGlobalRunner`
@@ -72,10 +70,11 @@ final-score verification and metadata. `GlobalReportResult` lives in
 `application/results/`. The structural factory can still be called independently
 with prepared `GlobalPlayerMetrics`; it does not run the search. The runner shares
 the composition's ObjectiveEngine with STABLE and passes the incumbent unchanged.
-`main` retains forwarding wrappers only and prints the application report metrics;
-no legacy runner or raw search-result state is needed.
+`main` prints the public application report metrics; it has no GLOBAL wrappers,
+legacy runner or raw search-result state.
 
-Compatibility tests from SCRUM-37 and SCRUM-38 remain unchanged. New tests cover
+SCRUM-37 and SCRUM-38 tests now call their architectural owners directly, with
+unchanged production values and behavioral fingerprints. Tests cover
 custom values, graph identity, all three mode selections, independent mutable
 instances, a small two-team run, GLOBAL construction/budget and a subprocess that
 rejects imports of `main` while composing the system.
@@ -88,5 +87,5 @@ the current concrete generators are sufficient for composition.
 
 SCRUM-40 added the common application API using the existing `BaseReportResult`.
 SCRUM-41 moved production GLOBAL orchestration into application with no dependency on `main`.
-Remaining scope: final thin entrypoint = SCRUM-42; engine hardening = v0.8. No optimizer fixes or configuration framework
+SCRUM-42 completes the thin entrypoint; engine hardening remains v0.8. No optimizer fixes or configuration framework
 are introduced by composition or the application API.

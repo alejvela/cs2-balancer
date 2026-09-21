@@ -13,13 +13,13 @@ from application.balancing_application import (
     GlobalExecutionUnavailableError,
 )
 from application.balancing_request import BalancingRequest
-from application.lan_balancer import LanBalancer
 from application.results.base_report_result import BaseReportResult
 from application.results.evaluation_result import EvaluationResult
 from application.results.global_report_result import GlobalReportResult
 from application.results.report_mode import ReportMode
 from configuration.application_config import ApplicationConfig
 from configuration.composition_root import create_balancing_composition
+from exporters.html_v2.html_exporter import HtmlExporterV2
 from optimizer.modes.optimization_mode import OptimizationMode
 from tests.acceptance import test_application_behavior_contract as contract
 from tests.acceptance.test_engine_acceptance import (
@@ -242,27 +242,24 @@ def test_entrypoint_uses_application_once_and_exports_public_result(
     monkeypatch, tmp_path, mode
 ):
     config = small_config()
-    monkeypatch.setattr(main, "APPLICATION_CONFIG", config)
-    for name, value in {
-        "NUMBER_OF_TEAMS": 2,
-        "TEAM_SIZE": 2,
-        "EXPECTED_PLAYER_COUNT": 4,
-        "OPTIMIZATION_MODE": mode,
-        "STABLE_OPTIMIZATION_CONFIG": config.stable,
-        "GLOBAL_OPTIMIZATION_CONFIG": config.global_search,
-        "REPORT_TITLE": "Entrypoint report",
-        "DEBUG_PLAYERS": False,
-        "DEBUG_FINAL_TEAMS": False,
-    }.items():
-        monkeypatch.setattr(main, name, value)
-    monkeypatch.setattr(main, "resolve_players_file", lambda: tmp_path / "unused.csv")
+    destination = tmp_path / "bootstrap.html"
+    config = replace(
+        config,
+        optimization_mode=mode,
+        event=replace(config.event, report_title="Entrypoint report"),
+        paths=replace(config.paths, output_report=destination),
+        faceit=replace(config.faceit, run_import=False),
+        debug_players=False,
+        debug_final_teams=False,
+    )
+    monkeypatch.setattr(
+        ApplicationConfig, "production_defaults", classmethod(lambda cls: config)
+    )
+    monkeypatch.setattr(
+        main, "resolve_players_file", lambda config: tmp_path / "unused.csv"
+    )
     monkeypatch.setattr(main.CssStatsImporter, "load", lambda self, source: players())
-    compositions, requests, reports, searches = [], [], [], []
-
-    def compose(config):
-        composition = create_balancing_composition(config)
-        compositions.append(composition)
-        return composition
+    requests, reports, searches = [], [], []
 
     class TrackedApplication(BalancingApplication):
         def run(self, request):
@@ -273,12 +270,11 @@ def test_entrypoint_uses_application_once_and_exports_public_result(
         reports.append(result)
         return tmp_path / "report.html"
 
-    monkeypatch.setattr(main.composition_root, "create_balancing_composition", compose)
     monkeypatch.setattr(main, "BalancingApplication", TrackedApplication)
-    monkeypatch.setattr(LanBalancer, "export", export)
+    monkeypatch.setattr(HtmlExporterV2, "export", export)
     monkeypatch.setattr(main, "print_global_optimization", searches.append)
     assert main.main() == 0
-    assert len(compositions) == len(requests) == len(reports) == 1
+    assert len(requests) == len(reports) == 1
     assert requests[0].optimization_mode is mode
     assert isinstance(reports[0], BaseReportResult)
     assert reports[0].metadata["optimization_mode"] == mode.value

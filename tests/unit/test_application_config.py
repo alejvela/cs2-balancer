@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-import main
 from configuration.application_config import (
     ApplicationConfig,
     EventConfig,
@@ -17,6 +16,10 @@ from configuration.application_config import (
     ScoringComponentConfig,
     ScoringConfig,
 )
+from configuration.composition_root import create_balancing_composition
+from configuration.global_factory import create_global_optimizer
+from configuration.pipeline_factory import create_pipeline
+from configuration.scoring_factory import create_scoring_model
 from optimizer.global_search.global_optimization_config import GlobalOptimizationConfig
 from optimizer.modes.optimization_mode import OptimizationMode
 from optimizer.modes.stable_optimization_config import StableOptimizationConfig
@@ -122,12 +125,16 @@ def test_pipeline_defaults():
     ]
 
 
-def test_engine_configs_are_reused_and_aliases_preserve_identity():
-    config = main.APPLICATION_CONFIG
+def test_engine_configs_are_reused_by_factories():
+    config = ApplicationConfig.production_defaults()
     assert isinstance(config.stable, StableOptimizationConfig)
     assert isinstance(config.global_search, GlobalOptimizationConfig)
-    assert main.STABLE_OPTIMIZATION_CONFIG is config.stable
-    assert main.GLOBAL_OPTIMIZATION_CONFIG is config.global_search
+    composition = create_balancing_composition(config)
+    assert composition.balancer.stable_optimizer.config is config.stable
+    assert (
+        create_global_optimizer(config, composition.objective_engine)._config
+        is config.global_search
+    )
     assert ApplicationConfig.production_defaults() == config
     # Full engine values are independently frozen by SCRUM-37 acceptance tests.
 
@@ -164,14 +171,17 @@ def test_defaults_and_composition_do_not_share_mutable_state():
     assert first.pipeline.phases is not second.pipeline.phases
     assert first.stable is not second.stable
     assert first.global_search is not second.global_search
-    pipeline1, pipeline2 = main.create_pipeline(), main.create_pipeline()
+    pipeline1, pipeline2 = (
+        create_pipeline(first.pipeline),
+        create_pipeline(second.pipeline),
+    )
     assert pipeline1.phases[0].strategy is not pipeline2.phases[0].strategy
     assert pipeline1.phases[0].neighborhood is not pipeline2.phases[0].neighborhood
     assert (
-        main.create_scoring_model().activity_factor_model
-        is not main.create_scoring_model().activity_factor_model
+        create_scoring_model(first.scoring).activity_factor_model
+        is not create_scoring_model(second.scoring).activity_factor_model
     )
-    assert main.APPLICATION_CONFIG == first
+    assert ApplicationConfig.production_defaults() == first
 
 
 def test_sequences_are_copied_to_tuples():

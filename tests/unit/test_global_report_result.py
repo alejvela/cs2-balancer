@@ -50,7 +50,7 @@ def test_global_report_contract_and_serialization(
         metadata=metadata,
     )
     assert isinstance(result, BaseReportResult)
-    assert main.GlobalReportResult is GlobalReportResult  # Legacy import alias.
+    assert main.GlobalReportResult is GlobalReportResult  # Entrypoint presents the public report type.
     assert result.mode is ReportMode.OPTIMIZED
     assert result.optimized is True and result.evaluation_only is False
     assert (

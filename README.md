@@ -77,10 +77,23 @@ result = app.run(
 )
 ```
 
+For manual customization of `python main.py`, update the local config construction
+at the start of `main()` using `dataclasses.replace`, for example:
+
+```python
+from dataclasses import replace
+
+config = ApplicationConfig.production_defaults()
+config = replace(config, faceit=replace(config.faceit, run_import=False))
+```
+
+Paths, event dimensions/title, debug switches and optimization mode all come from
+that same config. There are no import-time operator aliases to synchronize.
+
 The service returns `BaseReportResult` and performs no file import or export.
 See [application architecture](docs/application_architecture.md) for composition,
-results and acceptance evidence. Legacy constants/wrappers in `main.py` remain
-for compatibility; there is no public CLI or YAML configuration loader.
+results and acceptance evidence. `main.py` is the supported developer entrypoint;
+`ApplicationConfig` is the typed source of truth. There is no public CLI or YAML loader.
 
 - **FAST** starts from the generated composition and performs local optimization.
 - **STABLE** performs deterministic multi-start local optimization and selects a
@@ -105,8 +118,7 @@ Nick,FaceitNickname,Seed,Team
 ```
 
 `Team` may be empty for automatic optimization. Default balancing execution has
-`FaceitConfig.run_import=True` (exposed by the legacy `RUN_FACEIT_IMPORT` alias
-in `main.py`). It requires `FACEIT_API_KEY`, refreshes
+`FaceitConfig.run_import=True`. It requires `FACEIT_API_KEY`, refreshes
 the roster through FACEIT, and writes the enriched runtime data to
 `data/players_stats.csv` before balancing. Configure the key in the environment;
 never commit credentials or `.env` files:
@@ -115,7 +127,7 @@ never commit credentials or `.env` files:
 $env:FACEIT_API_KEY="your_key_here"
 ```
 
-When `RUN_FACEIT_IMPORT = False`, the application does not enrich
+When `config.faceit.run_import` is `False`, the application does not enrich
 `data/players.csv` directly. It reuses an existing `data/players_stats.csv` and
 fails with `FileNotFoundError` if that generated file does not exist. The enriched
 CSV, FACEIT error CSV, and generated output are ignored by Git.

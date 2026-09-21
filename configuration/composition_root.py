@@ -88,7 +88,7 @@ def create_balancer(
         exporter=HtmlExporterV2(
             scoring_model=scoring_model, title=config.event.report_title
         ),
-        # GLOBAL remains a STABLE warm start here; main orchestrates search later.
+        # GLOBAL remains a STABLE warm start here; application orchestrates search later.
         optimization_mode=(
             OptimizationMode.STABLE
             if config.optimization_mode is OptimizationMode.GLOBAL

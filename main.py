@@ -3,196 +3,24 @@ from __future__ import annotations
 import os
 from collections import Counter
 from collections.abc import Iterable
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from application import global_execution
 from application.balancing_application import BalancingApplication
 from application.balancing_request import BalancingRequest
 from application.global_execution import get_player_attribute, get_player_nickname
-from application.lan_balancer import (
-    LanBalancer,
-)
-from application.results.base_report_result import (
-    BaseReportResult,
-)
+from application.results.base_report_result import BaseReportResult
 from application.results.global_report_result import GlobalReportResult
-from application.results.report_mode import (
-    ReportMode,
-)
-from configuration import (
-    composition_root,
-    global_factory,
-    objective_factory,
-    pipeline_factory,
-    scoring_factory,
-)
+from application.results.report_mode import ReportMode
 from configuration.application_config import ApplicationConfig
-from configuration.composition_root import BalancingComposition
+from configuration.reporting_factory import create_reporting_components
 from importers.csstats_importer import CssStatsImporter
-from objective.objective_engine import (
-    ObjectiveEngine,
-)
-from optimizer.global_search.global_optimization_result import (
-    GlobalOptimizationResult,
-)
-from optimizer.global_search.global_optimizer import (
-    GlobalOptimizer,
-)
-from optimizer.global_search.global_search_problem import (
-    GlobalSearchProblem,
-)
-from optimizer.global_search.global_search_state import (
-    GlobalPlayerMetrics,
-)
-from optimizer.modes.optimization_mode import (
-    OptimizationMode,
-)
-from optimizer.optimization_pipeline import (
-    OptimizationPipeline,
-)
-from scoring.scoring_model import (
-    ScoringModel,
-)
-from scrapers.csv_escraper_exporter import (
-    CsvScraperExporter,
-)
-from scrapers.faceit.faceit_api_client import (
-    FaceitApiClient,
-)
-from scrapers.faceit.faceit_player_record_map import (
-    FaceitPlayerRecordMapper,
-)
-from scrapers.faceit.faceit_scrapper import (
-    FaceitScraper,
-)
-
-APPLICATION_CONFIG = ApplicationConfig.production_defaults()
-
-# Compatibility aliases for SCRUM-37; factories receive explicit config snapshots.
-SOURCE_PLAYERS_FILE = APPLICATION_CONFIG.paths.source_players
-GENERATED_STATS_FILE = APPLICATION_CONFIG.paths.generated_stats
-FACEIT_ERRORS_FILE = APPLICATION_CONFIG.paths.faceit_errors
-OUTPUT_REPORT_FILE = APPLICATION_CONFIG.paths.output_report
-NUMBER_OF_TEAMS = APPLICATION_CONFIG.event.number_of_teams
-TEAM_SIZE = APPLICATION_CONFIG.event.team_size
-EXPECTED_PLAYER_COUNT = APPLICATION_CONFIG.event.expected_player_count
-EVENT_NAME = APPLICATION_CONFIG.event.name
-REPORT_TITLE = APPLICATION_CONFIG.event.report_title
-RUN_FACEIT_IMPORT = APPLICATION_CONFIG.faceit.run_import
-DEBUG_PLAYERS = APPLICATION_CONFIG.debug_players
-DEBUG_FINAL_TEAMS = APPLICATION_CONFIG.debug_final_teams
-OPTIMIZATION_MODE = APPLICATION_CONFIG.optimization_mode
-STABLE_OPTIMIZATION_CONFIG = APPLICATION_CONFIG.stable
-GLOBAL_OPTIMIZATION_CONFIG = APPLICATION_CONFIG.global_search
-FACEIT_PREFERRED_GAME_ID = APPLICATION_CONFIG.faceit.preferred_game_id
-FACEIT_FALLBACK_GAME_IDS = APPLICATION_CONFIG.faceit.fallback_game_ids
-FACEIT_RECENT_MATCHES = APPLICATION_CONFIG.faceit.recent_matches
-FACEIT_STRICT = APPLICATION_CONFIG.faceit.strict
-FACEIT_DELAY_SECONDS = APPLICATION_CONFIG.faceit.delay_seconds
-FACEIT_TIMEOUT_SECONDS = APPLICATION_CONFIG.faceit.timeout_seconds
-FACEIT_RETRIES = APPLICATION_CONFIG.faceit.retries
-FACEIT_RETRY_DELAY_SECONDS = APPLICATION_CONFIG.faceit.retry_delay_seconds
-
-
-def _composition_config() -> ApplicationConfig:
-    """Translate legacy aliases at the entrypoint boundary only."""
-    return replace(
-        APPLICATION_CONFIG,
-        event=replace(
-            APPLICATION_CONFIG.event,
-            number_of_teams=NUMBER_OF_TEAMS,
-            team_size=TEAM_SIZE,
-            report_title=REPORT_TITLE,
-        ),
-        stable=STABLE_OPTIMIZATION_CONFIG,
-        global_search=GLOBAL_OPTIMIZATION_CONFIG,
-        optimization_mode=OPTIMIZATION_MODE,
-    )
-
-
-# ============================================================
-# Scoring individual
-# ============================================================
-
-def create_scoring_model() -> ScoringModel:
-    return scoring_factory.create_scoring_model(APPLICATION_CONFIG.scoring)
-
-
-# ============================================================
-# Objective Engine
-# ============================================================
-
-def create_objective_engine(scoring_model: ScoringModel) -> ObjectiveEngine:
-    return objective_factory.create_objective_engine(
-        APPLICATION_CONFIG.objective, scoring_model, team_size=TEAM_SIZE,
-    )
-
-
-# ============================================================
-# Pipeline de optimización
-# ============================================================
-
-def create_pipeline() -> OptimizationPipeline:
-    return pipeline_factory.create_pipeline(APPLICATION_CONFIG.pipeline)
-
-
-# ============================================================
-# Construcción de la aplicación
-# ============================================================
-
-def create_balancer(
-    scoring_model: ScoringModel,
-    objective_engine: ObjectiveEngine | None = None,
-) -> LanBalancer:
-    return composition_root.create_balancer(
-        _composition_config(), scoring_model, objective_engine,
-    )
-
-
-# ============================================================
-# GLOBAL - construcción del problema
-# ============================================================
-
-def create_global_metrics(
-    players: Iterable[Any], scoring_model: ScoringModel,
-) -> tuple[GlobalPlayerMetrics, ...]:
-    """Compatibility-only forwarding wrapper; implementation lives in application."""
-    return global_execution.create_global_metrics(players, scoring_model)
-
-
-def create_global_problem(
-    players: Iterable[Any],
-    scoring_model: ScoringModel,
-) -> GlobalSearchProblem:
-    return global_factory.create_global_problem(
-        _composition_config(), create_global_metrics(players, scoring_model),
-    )
-
-
-def create_global_optimizer(objective_engine: ObjectiveEngine) -> GlobalOptimizer:
-    return global_factory.create_global_optimizer(_composition_config(), objective_engine)
-
-
-def run_global_optimization(
-    players: Iterable[Any],
-    scoring_model: ScoringModel,
-    objective_engine: ObjectiveEngine,
-    stable_result: BaseReportResult,
-    *,
-    config: ApplicationConfig | None = None,
-) -> tuple[GlobalReportResult, GlobalOptimizationResult]:
-    """Compatibility-only: preserve SCRUM-37 overrides and its tuple return."""
-    return global_execution.run_global_optimization(
-        players, scoring_model, objective_engine, stable_result,
-        config=config if config is not None else _composition_config(),
-        optimizer_factory=(
-            (lambda config, objective: create_global_optimizer(objective_engine=objective))
-            if config is None else None
-        ),
-        title=REPORT_TITLE if config is None else stable_result.title,
-    )
+from optimizer.modes.optimization_mode import OptimizationMode
+from scoring.scoring_model import ScoringModel
+from scrapers.csv_escraper_exporter import CsvScraperExporter
+from scrapers.faceit.faceit_api_client import FaceitApiClient
+from scrapers.faceit.faceit_player_record_map import FaceitPlayerRecordMapper
+from scrapers.faceit.faceit_scrapper import FaceitScraper
 
 
 def print_global_optimization(
@@ -203,80 +31,37 @@ def print_global_optimization(
     print("OPTIMIZACIÓN GLOBAL")
     print("=" * 72)
 
-    print(
-        f"Incumbent inicial:      "
-        f"{result.initial_incumbent_score:.4f}"
-    )
+    print(f"Incumbent inicial:      {result.initial_incumbent_score:.4f}")
 
-    print(
-        f"Score final:            "
-        f"{result.score:.4f}"
-    )
+    print(f"Score final:            {result.score:.4f}")
 
-    print(
-        f"Mejora GLOBAL:          "
-        f"{result.improvement:+.4f}"
-    )
+    print(f"Mejora GLOBAL:          {result.improvement:+.4f}")
 
-    print(
-        f"Nodos explorados:       "
-        f"{result.nodes_visited:,}"
-    )
+    print(f"Nodos explorados:       {result.nodes_visited:,}")
 
-    print(
-        f"Soluciones evaluadas:   "
-        f"{result.complete_solutions_evaluated:,}"
-    )
+    print(f"Soluciones evaluadas:   {result.complete_solutions_evaluated:,}")
 
-    print(
-        f"Ramas podadas:          "
-        f"{result.pruned_nodes:,}"
-    )
+    print(f"Ramas podadas:          {result.pruned_nodes:,}")
 
-    print(
-        f"  Capacidad:            "
-        f"{result.capacity_prunes:,}"
-    )
+    print(f"  Capacidad:            {result.capacity_prunes:,}")
 
-    print(
-        f"  Seeds:                "
-        f"{result.seed_prunes:,}"
-    )
+    print(f"  Seeds:                {result.seed_prunes:,}")
 
-    print(
-        f"  Bound / Power:        "
-        f"{result.bound_prunes:,}"
-    )
+    print(f"  Bound / Power:        {result.bound_prunes:,}")
 
-    print(
-        f"Tiempo GLOBAL:          "
-        f"{format_elapsed_seconds(result.elapsed_seconds)}"
-    )
+    print(f"Tiempo GLOBAL:          {format_elapsed_seconds(result.elapsed_seconds)}")
 
-    print(
-        f"Límite alcanzado:       "
-        f"{'SÍ' if result.stopped_by_limit else 'NO'}"
-    )
+    print(f"Límite alcanzado:       {'SÍ' if result.stopped_by_limit else 'NO'}")
 
     print(
         f"Espacio agotado:        "
         f"{'SÍ' if result.stop_reason == 'SEARCH_EXHAUSTED' else 'NO'}"
     )
 
-    print(
-        f"Óptimo demostrado:      "
-        f"{'SÍ' if result.optimality_proven else 'NO'}"
-    )
+    print(f"Óptimo demostrado:      {'SÍ' if result.optimality_proven else 'NO'}")
 
-    print(
-        f"Motivo de parada:       "
-        f"{result.stop_reason}"
-    )
+    print(f"Motivo de parada:       {result.stop_reason}")
 
-
-# ============================================================
-# FACEIT API key
-# ============================================================
 
 def get_faceit_api_key() -> str:
     """
@@ -284,32 +69,20 @@ def get_faceit_api_key() -> str:
     FACEIT_API_KEY.
     """
 
-    api_key = os.environ.get(
-        "FACEIT_API_KEY"
-    )
+    api_key = os.environ.get("FACEIT_API_KEY")
 
     if api_key is None:
-        raise RuntimeError(
-            "La variable de entorno FACEIT_API_KEY "
-            "no está definida."
-        )
+        raise RuntimeError("La variable de entorno FACEIT_API_KEY no está definida.")
 
     normalized = api_key.strip()
 
     if not normalized:
-        raise RuntimeError(
-            "La variable de entorno FACEIT_API_KEY "
-            "está vacía."
-        )
+        raise RuntimeError("La variable de entorno FACEIT_API_KEY está vacía.")
 
     return normalized
 
 
-# ============================================================
-# Importación FACEIT
-# ============================================================
-
-def run_faceit_import() -> Path:
+def run_faceit_import(config: ApplicationConfig) -> Path:
     """
     Consulta FACEIT para todos los jugadores del CSV inicial.
 
@@ -325,141 +98,86 @@ def run_faceit_import() -> Path:
     posteriormente tanto en modo automático como preasignado.
     """
 
-    if not SOURCE_PLAYERS_FILE.exists():
+    if not config.paths.source_players.exists():
         raise FileNotFoundError(
-            "No existe el archivo de entrada: "
-            f"{SOURCE_PLAYERS_FILE.resolve()}"
+            f"No existe el archivo de entrada: {config.paths.source_players.resolve()}"
         )
 
     api_key = get_faceit_api_key()
 
     print()
     print("=" * 72)
-    print(
-        "IMPORTACIÓN DE JUGADORES DESDE FACEIT"
-    )
+    print("IMPORTACIÓN DE JUGADORES DESDE FACEIT")
     print("=" * 72)
 
-    print(
-        f"Entrada:              "
-        f"{SOURCE_PLAYERS_FILE}"
-    )
+    print(f"Entrada:              {config.paths.source_players}")
 
-    print(
-        f"Juego preferido:      "
-        f"{FACEIT_PREFERRED_GAME_ID}"
-    )
+    print(f"Juego preferido:      {config.faceit.preferred_game_id}")
 
-    print(
-        "Juegos fallback:      "
-        f"{', '.join(FACEIT_FALLBACK_GAME_IDS)}"
-    )
+    print(f"Juegos fallback:      {', '.join(config.faceit.fallback_game_ids)}")
 
-    print(
-        f"Partidas recientes:   "
-        f"{FACEIT_RECENT_MATCHES}"
-    )
+    print(f"Partidas recientes:   {config.faceit.recent_matches}")
 
     print()
 
     with FaceitApiClient(
         api_key=api_key,
-        preferred_game_id=(
-            FACEIT_PREFERRED_GAME_ID
-        ),
-        fallback_game_ids=(
-            FACEIT_FALLBACK_GAME_IDS
-        ),
-        timeout=FACEIT_TIMEOUT_SECONDS,
-        retries=FACEIT_RETRIES,
-        retry_delay=(
-            FACEIT_RETRY_DELAY_SECONDS
-        ),
+        preferred_game_id=(config.faceit.preferred_game_id),
+        fallback_game_ids=(config.faceit.fallback_game_ids),
+        timeout=config.faceit.timeout_seconds,
+        retries=config.faceit.retries,
+        retry_delay=(config.faceit.retry_delay_seconds),
     ) as client:
-
         mapper = FaceitPlayerRecordMapper(
-            game_id=FACEIT_PREFERRED_GAME_ID,
+            game_id=config.faceit.preferred_game_id,
             source_name="FACEIT",
         )
 
         scraper = FaceitScraper(
             client=client,
             mapper=mapper,
-            recent_matches=FACEIT_RECENT_MATCHES,
-            strict=FACEIT_STRICT,
-            delay=FACEIT_DELAY_SECONDS,
-            maximum_seed_one_players=(
-                NUMBER_OF_TEAMS
-            ),
+            recent_matches=config.faceit.recent_matches,
+            strict=config.faceit.strict,
+            delay=config.faceit.delay_seconds,
+            maximum_seed_one_players=(config.event.number_of_teams),
         )
 
-        records = scraper.scrape(
-            SOURCE_PLAYERS_FILE
-        )
+        records = scraper.scrape(config.paths.source_players)
 
-        scraper_errors = (
-            scraper.errors
-        )
+        scraper_errors = scraper.errors
 
-    valid_records = [
-        record
-        for record in records
-        if record.is_valid
-    ]
+    valid_records = [record for record in records if record.is_valid]
 
-    failed_records = [
-        record
-        for record in records
-        if not record.is_valid
-    ]
+    failed_records = [record for record in records if not record.is_valid]
 
-    print(
-        f"Jugadores esperados:  "
-        f"{EXPECTED_PLAYER_COUNT}"
-    )
+    print(f"Jugadores esperados:  {config.event.expected_player_count}")
 
-    print(
-        f"Jugadores válidos:    "
-        f"{len(valid_records)}"
-    )
+    print(f"Jugadores válidos:    {len(valid_records)}")
 
-    print(
-        f"Jugadores con error:  "
-        f"{len(failed_records)}"
-    )
+    print(f"Jugadores con error:  {len(failed_records)}")
 
     if failed_records:
         print()
-        print(
-            "JUGADORES CON ERROR"
-        )
+        print("JUGADORES CON ERROR")
         print("-" * 72)
 
         for record in failed_records:
-            print(
-                f"- {record.nickname}: "
-                f"{record.error or 'Error desconocido'}"
-            )
+            print(f"- {record.nickname}: {record.error or 'Error desconocido'}")
 
         CsvScraperExporter(
             include_errors=True,
         ).export(
             records=failed_records,
-            output=FACEIT_ERRORS_FILE,
+            output=config.paths.faceit_errors,
         )
 
         print()
 
-        print(
-            "Errores guardados en: "
-            f"{FACEIT_ERRORS_FILE.resolve()}"
-        )
+        print(f"Errores guardados en: {config.paths.faceit_errors.resolve()}")
 
     if scraper_errors:
         print()
-        print(
-            "DETALLE TÉCNICO"
-        )
+        print("DETALLE TÉCNICO")
         print("-" * 72)
 
         for error in scraper_errors:
@@ -470,14 +188,11 @@ def run_faceit_import() -> Path:
                 f"{error.get('error')}"
             )
 
-    if (
-        len(valid_records)
-        != EXPECTED_PLAYER_COUNT
-    ):
+    if len(valid_records) != config.event.expected_player_count:
         raise RuntimeError(
             "El número de jugadores válidos no coincide "
             "con el esperado. "
-            f"Esperados: {EXPECTED_PLAYER_COUNT}. "
+            f"Esperados: {config.event.expected_player_count}. "
             f"Obtenidos: {len(valid_records)}."
         )
 
@@ -485,44 +200,35 @@ def run_faceit_import() -> Path:
         include_errors=False,
     ).export(
         records=valid_records,
-        output=GENERATED_STATS_FILE,
+        output=config.paths.generated_stats,
     )
 
     print()
 
-    print(
-        "CSV de estadísticas generado: "
-        f"{generated_file.resolve()}"
-    )
+    print(f"CSV de estadísticas generado: {generated_file.resolve()}")
 
     return generated_file
 
 
-def resolve_players_file() -> Path:
+def resolve_players_file(config: ApplicationConfig) -> Path:
     """
     Devuelve el CSV que debe utilizar la aplicación.
 
-    Cuando RUN_FACEIT_IMPORT=True se regeneran primero las
+    Cuando config.faceit.run_import=True se regeneran primero las
     estadísticas.
 
     Cuando es False se reutiliza players_stats.csv.
     """
 
-    if RUN_FACEIT_IMPORT:
-        return run_faceit_import()
+    if config.faceit.run_import:
+        return run_faceit_import(config)
 
-    if not GENERATED_STATS_FILE.exists():
+    if not config.paths.generated_stats.exists():
         raise FileNotFoundError(
-            "No existe el archivo generado: "
-            f"{GENERATED_STATS_FILE.resolve()}"
+            f"No existe el archivo generado: {config.paths.generated_stats.resolve()}"
         )
 
-    return GENERATED_STATS_FILE
-
-
-# ============================================================
-# Identidad de jugadores
-# ============================================================
+    return config.paths.generated_stats
 
 
 def get_player_identity(
@@ -545,11 +251,7 @@ def get_player_identity(
     )
 
     if identity:
-        return (
-            str(identity)
-            .strip()
-            .casefold()
-        )
+        return str(identity).strip().casefold()
 
     steam_id = get_player_attribute(
         player,
@@ -557,24 +259,12 @@ def get_player_identity(
     )
 
     if steam_id:
-        return (
-            "steam:"
-            f"{str(steam_id).strip().casefold()}"
-        )
+        return f"steam:{str(steam_id).strip().casefold()}"
 
-    nickname = get_player_nickname(
-        player
-    )
+    nickname = get_player_nickname(player)
 
-    return (
-        "nick:"
-        f"{nickname.strip().casefold()}"
-    )
+    return f"nick:{nickname.strip().casefold()}"
 
-
-# ============================================================
-# Validación de jugadores de entrada
-# ============================================================
 
 def validate_players(
     players: Iterable[Any],
@@ -585,66 +275,39 @@ def validate_players(
     balanceador.
     """
 
-    player_list = list(
-        players
-    )
+    player_list = list(players)
 
-    if (
-        len(player_list)
-        != expected_player_count
-    ):
+    if len(player_list) != expected_player_count:
         raise RuntimeError(
             f"Se han importado {len(player_list)} jugadores. "
             f"Se esperaban {expected_player_count}."
         )
 
-    object_ids = [
-        id(player)
-        for player in player_list
-    ]
+    object_ids = [id(player) for player in player_list]
 
-    if (
-        len(object_ids)
-        != len(set(object_ids))
-    ):
+    if len(object_ids) != len(set(object_ids)):
         raise RuntimeError(
-            "La colección de entrada contiene instancias "
-            "de Player duplicadas."
+            "La colección de entrada contiene instancias de Player duplicadas."
         )
 
-    identities = [
-        get_player_identity(
-            player
-        )
-        for player in player_list
-    ]
+    identities = [get_player_identity(player) for player in player_list]
 
     duplicated = [
-        identity
-        for identity, count
-        in Counter(
-            identities
-        ).items()
-        if count > 1
+        identity for identity, count in Counter(identities).items() if count > 1
     ]
 
     if duplicated:
         raise RuntimeError(
-            "La colección de entrada contiene jugadores "
-            "duplicados: "
-            f"{duplicated}."
+            f"La colección de entrada contiene jugadores duplicados: {duplicated}."
         )
 
-
-# ============================================================
-# Validación estructural de equipos
-# ============================================================
 
 def validate_teams(
     teams: Iterable[Any],
     expected_team_size: int,
     expected_player_count: int,
     stage: str,
+    config: ApplicationConfig,
 ) -> None:
     """
     Comprueba:
@@ -656,17 +319,12 @@ def validate_teams(
         - Identidades duplicadas.
     """
 
-    team_list = list(
-        teams
-    )
+    team_list = list(teams)
 
-    if (
-        len(team_list)
-        != NUMBER_OF_TEAMS
-    ):
+    if len(team_list) != config.event.number_of_teams:
         raise RuntimeError(
             f"[{stage}] Se esperaban "
-            f"{NUMBER_OF_TEAMS} equipos, "
+            f"{config.event.number_of_teams} equipos, "
             f"pero existen {len(team_list)}."
         )
 
@@ -703,48 +361,32 @@ def validate_teams(
             )
         )
 
-        if (
-            len(players)
-            != expected_team_size
-        ):
+        if len(players) != expected_team_size:
             raise RuntimeError(
                 f"[{stage}] {team_name} contiene "
                 f"{len(players)} jugadores. "
                 f"Se esperaban {expected_team_size}."
             )
 
-        total_players += len(
-            players
-        )
+        total_players += len(players)
 
         for player_index, player in enumerate(
             players,
             start=1,
         ):
-            location = (
-                f"{team_name}[{player_index}]"
-            )
+            location = f"{team_name}[{player_index}]"
 
             object_locations.setdefault(
                 id(player),
                 [],
-            ).append(
-                location
-            )
+            ).append(location)
 
             identity_locations.setdefault(
-                get_player_identity(
-                    player
-                ),
+                get_player_identity(player),
                 [],
-            ).append(
-                location
-            )
+            ).append(location)
 
-    if (
-        total_players
-        != expected_player_count
-    ):
+    if total_players != expected_player_count:
         raise RuntimeError(
             f"[{stage}] Existen "
             f"{total_players} posiciones de jugadores. "
@@ -753,46 +395,34 @@ def validate_teams(
 
     duplicated_objects = {
         object_id: locations
-        for object_id, locations
-        in object_locations.items()
+        for object_id, locations in object_locations.items()
         if len(locations) > 1
     }
 
     duplicated_identities = {
         identity: locations
-        for identity, locations
-        in identity_locations.items()
+        for identity, locations in identity_locations.items()
         if len(locations) > 1
     }
 
     if duplicated_objects:
         details = "; ".join(
-            (
-                f"object_id={object_id}: "
-                f"{', '.join(locations)}"
-            )
-            for object_id, locations
-            in duplicated_objects.items()
+            (f"object_id={object_id}: {', '.join(locations)}")
+            for object_id, locations in duplicated_objects.items()
         )
 
         raise RuntimeError(
-            f"[{stage}] Se han detectado instancias "
-            f"de Player repetidas. {details}"
+            f"[{stage}] Se han detectado instancias de Player repetidas. {details}"
         )
 
     if duplicated_identities:
         details = "; ".join(
-            (
-                f"{identity}: "
-                f"{', '.join(locations)}"
-            )
-            for identity, locations
-            in duplicated_identities.items()
+            (f"{identity}: {', '.join(locations)}")
+            for identity, locations in duplicated_identities.items()
         )
 
         raise RuntimeError(
-            f"[{stage}] Se han detectado jugadores "
-            f"duplicados por identidad. {details}"
+            f"[{stage}] Se han detectado jugadores duplicados por identidad. {details}"
         )
 
 
@@ -805,36 +435,18 @@ def validate_same_player_collection(
     colección lógica de jugadores.
     """
 
-    before_counter = Counter(
-        get_player_identity(
-            player
-        )
-        for player in players_before
-    )
+    before_counter = Counter(get_player_identity(player) for player in players_before)
 
     after_counter = Counter(
-        get_player_identity(
-            player
-        )
-        for team in teams_after
-        for player in team.players
+        get_player_identity(player) for team in teams_after for player in team.players
     )
 
-    if (
-        before_counter
-        == after_counter
-    ):
+    if before_counter == after_counter:
         return
 
-    missing = (
-        before_counter
-        - after_counter
-    )
+    missing = before_counter - after_counter
 
-    unexpected = (
-        after_counter
-        - before_counter
-    )
+    unexpected = after_counter - before_counter
 
     raise RuntimeError(
         "El proceso ha modificado la colección de jugadores. "
@@ -843,13 +455,10 @@ def validate_same_player_collection(
     )
 
 
-# ============================================================
-# Validación específica por modo
-# ============================================================
-
 def validate_result(
     result: BaseReportResult,
     players: Iterable[Any],
+    config: ApplicationConfig,
 ) -> None:
     """
     Ejecuta las validaciones comunes y específicas del modo.
@@ -859,17 +468,14 @@ def validate_result(
         result,
         BaseReportResult,
     ):
-        raise TypeError(
-            "result must be a BaseReportResult instance."
-        )
+        raise TypeError("result must be a BaseReportResult instance.")
 
     validate_teams(
         teams=result.teams,
-        expected_team_size=TEAM_SIZE,
-        expected_player_count=(
-            EXPECTED_PLAYER_COUNT
-        ),
+        expected_team_size=config.event.team_size,
+        expected_player_count=(config.event.expected_player_count),
         stage="Resultado",
+        config=config,
     )
 
     validate_same_player_collection(
@@ -877,14 +483,8 @@ def validate_result(
         teams_after=result.teams,
     )
 
-    if (
-        result.mode
-        is ReportMode.OPTIMIZED
-    ):
-        if (
-            result.final_score
-            < result.initial_score
-        ):
+    if result.mode is ReportMode.OPTIMIZED:
+        if result.final_score < result.initial_score:
             raise RuntimeError(
                 "La optimización ha terminado con una "
                 "puntuación inferior a la inicial. "
@@ -892,13 +492,8 @@ def validate_result(
                 f"Final: {result.final_score:.2f}."
             )
 
-    elif (
-        result.mode
-        is ReportMode.PREASSIGNED
-    ):
-        validate_preassigned_result(
-            result
-        )
+    elif result.mode is ReportMode.PREASSIGNED:
+        validate_preassigned_result(result)
 
 
 def validate_preassigned_result(
@@ -933,46 +528,33 @@ def validate_preassigned_result(
             )
 
             if assigned_team is None:
-                errors.append(
-                    f"{get_player_nickname(player)} "
-                    "no contiene Team."
-                )
+                errors.append(f"{get_player_nickname(player)} no contiene Team.")
 
                 continue
 
             try:
-                assigned_team_value = int(
-                    assigned_team
-                )
+                assigned_team_value = int(assigned_team)
 
             except (
                 TypeError,
                 ValueError,
             ):
                 errors.append(
-                    f"{get_player_nickname(player)} "
-                    f"contiene Team={assigned_team!r}."
+                    f"{get_player_nickname(player)} contiene Team={assigned_team!r}."
                 )
 
                 continue
 
             try:
-                actual_team_value = int(
-                    team_id
-                )
+                actual_team_value = int(team_id)
 
             except (
                 TypeError,
                 ValueError,
             ):
-                actual_team_value = (
-                    team_index
-                )
+                actual_team_value = team_index
 
-            if (
-                assigned_team_value
-                != actual_team_value
-            ):
+            if assigned_team_value != actual_team_value:
                 errors.append(
                     f"{get_player_nickname(player)} "
                     f"tiene Team={assigned_team_value}, "
@@ -983,17 +565,13 @@ def validate_preassigned_result(
     if errors:
         raise RuntimeError(
             "La evaluación preasignada no ha conservado "
-            "correctamente los equipos: "
-            + " | ".join(errors)
+            "correctamente los equipos: " + " | ".join(errors)
         )
 
 
-# ============================================================
-# Información del modo
-# ============================================================
-
 def print_mode(
     mode: ReportMode,
+    config: ApplicationConfig,
 ) -> None:
     """
     Muestra por consola qué flujo va a ejecutarse.
@@ -1001,52 +579,25 @@ def print_mode(
 
     print()
     print("=" * 72)
-    print(
-        "MODO DE EJECUCIÓN"
-    )
+    print("MODO DE EJECUCIÓN")
     print("=" * 72)
 
-    print(
-        f"Modo:                 "
-        f"{mode.value}"
-    )
+    print(f"Modo:                 {mode.value}")
 
-    print(
-        f"Descripción:          "
-        f"{mode.label}"
-    )
+    print(f"Descripción:          {mode.label}")
 
     if mode is ReportMode.PREASSIGNED:
-        print(
-            "Acción:               "
-            "Evaluar equipos del CSV"
-        )
+        print("Acción:               Evaluar equipos del CSV")
 
-        print(
-            "Optimización:         "
-            "NO"
-        )
+        print("Optimización:         NO")
 
     else:
-        print(
-            "Acción:               "
-            "Generar y optimizar equipos"
-        )
+        print("Acción:               Generar y optimizar equipos")
 
-        print(
-            "Optimización:         "
-            "SÍ"
-        )
+        print("Optimización:         SÍ")
 
-        print(
-            "Motor:                "
-            f"{OPTIMIZATION_MODE.value.upper()}"
-        )
+        print(f"Motor:                {config.optimization_mode.value.upper()}")
 
-
-# ============================================================
-# Depuración de jugadores
-# ============================================================
 
 def print_players_debug(
     players: Iterable[Any],
@@ -1057,18 +608,14 @@ def print_players_debug(
 
     print()
     print("=" * 72)
-    print(
-        "JUGADORES IMPORTADOS"
-    )
+    print("JUGADORES IMPORTADOS")
     print("=" * 72)
 
     for index, player in enumerate(
         players,
         start=1,
     ):
-        nickname = get_player_nickname(
-            player
-        )
+        nickname = get_player_nickname(player)
 
         team_number = getattr(
             player,
@@ -1094,10 +641,6 @@ def print_players_debug(
         )
 
 
-# ============================================================
-# Depuración de equipos
-# ============================================================
-
 def print_team_debug(
     teams: Iterable[Any],
     title: str,
@@ -1108,9 +651,7 @@ def print_team_debug(
 
     print()
     print("=" * 72)
-    print(
-        title
-    )
+    print(title)
     print("=" * 72)
 
     for team_index, team in enumerate(
@@ -1127,18 +668,14 @@ def print_team_debug(
         )
 
         print()
-        print(
-            str(team_name).upper()
-        )
+        print(str(team_name).upper())
         print("-" * 72)
 
         for player_index, player in enumerate(
             team.players,
             start=1,
         ):
-            nickname = get_player_nickname(
-                player
-            )
+            nickname = get_player_nickname(player)
 
             assigned_team = getattr(
                 player,
@@ -1156,18 +693,10 @@ def print_team_debug(
             )
 
 
-# ============================================================
-# Diagnóstico STABLE
-# ============================================================
-
 def format_confidence(
     value: Any,
 ) -> str:
-    normalized = (
-        str(value or "UNKNOWN")
-        .strip()
-        .upper()
-    )
+    normalized = str(value or "UNKNOWN").strip().upper()
 
     labels = {
         "NONE": "SIN DATOS",
@@ -1193,11 +722,7 @@ def format_stop_reason(
     if value is None:
         return "DESCONOCIDO"
 
-    normalized = (
-        str(value)
-        .strip()
-        .casefold()
-    )
+    normalized = str(value).strip().casefold()
 
     labels = {
         "perfect_score": "PUNTUACIÓN PERFECTA",
@@ -1224,9 +749,7 @@ def format_restart_number(
         return "—"
 
     try:
-        return str(
-            int(value)
-        )
+        return str(int(value))
     except (
         TypeError,
         ValueError,
@@ -1249,28 +772,16 @@ def format_elapsed_seconds(
         return "—"
 
     if seconds < 1.0:
-        return (
-            f"{seconds * 1000.0:.2f} ms"
-        )
+        return f"{seconds * 1000.0:.2f} ms"
 
     if seconds < 60.0:
-        return (
-            f"{seconds:.2f} s"
-        )
+        return f"{seconds:.2f} s"
 
-    minutes = int(
-        seconds // 60.0
-    )
+    minutes = int(seconds // 60.0)
 
-    remaining_seconds = (
-        seconds
-        - minutes * 60.0
-    )
+    remaining_seconds = seconds - minutes * 60.0
 
-    return (
-        f"{minutes} min "
-        f"{remaining_seconds:.1f} s"
-    )
+    return f"{minutes} min {remaining_seconds:.1f} s"
 
 
 def print_stable_optimization(
@@ -1288,9 +799,7 @@ def print_stable_optimization(
     ):
         return
 
-    stable_data = metadata.get(
-        "stable_optimization"
-    )
+    stable_data = metadata.get("stable_optimization")
 
     if not isinstance(
         stable_data,
@@ -1325,40 +834,21 @@ def print_stable_optimization(
     print("OPTIMIZACIÓN ESTABLE")
     print("=" * 72)
 
-    score = stable_data.get(
-        "score"
-    )
+    score = stable_data.get("score")
 
     if score is not None:
-        print(
-            f"Score seleccionado:    "
-            f"{float(score):.4f}"
-        )
+        print(f"Score seleccionado:    {float(score):.4f}")
 
-    penalty = stable_data.get(
-        "penalty"
-    )
+    penalty = stable_data.get("penalty")
 
     if penalty is not None:
-        print(
-            f"Penalización:          "
-            f"{float(penalty):.2f}"
-        )
+        print(f"Penalización:          {float(penalty):.2f}")
 
-    print(
-        f"Confianza:             "
-        f"{format_confidence(stable_data.get('confidence'))}"
-    )
+    print(f"Confianza:             {format_confidence(stable_data.get('confidence'))}")
 
-    print(
-        f"Restarts completados:  "
-        f"{stable_data.get('completed_restarts', 0)}"
-    )
+    print(f"Restarts completados:  {stable_data.get('completed_restarts', 0)}")
 
-    print(
-        f"Soluciones únicas:     "
-        f"{stable_data.get('unique_solutions', 0)}"
-    )
+    print(f"Soluciones únicas:     {stable_data.get('unique_solutions', 0)}")
 
     print(
         f"Mejor encontrada en:   "
@@ -1366,24 +856,14 @@ def print_stable_optimization(
     )
 
     print(
-        f"Sin mejora:            "
-        f"{convergence.get('restarts_without_improvement', 0)}"
+        f"Sin mejora:            {convergence.get('restarts_without_improvement', 0)}"
     )
 
-    print(
-        f"Mejoras reales:        "
-        f"{stable_data.get('quality_improvements', 0)}"
-    )
+    print(f"Mejoras reales:        {stable_data.get('quality_improvements', 0)}")
 
-    print(
-        f"Cambios selección:     "
-        f"{stable_data.get('selection_changes', 0)}"
-    )
+    print(f"Cambios selección:     {stable_data.get('selection_changes', 0)}")
 
-    print(
-        f"Evaluaciones globales: "
-        f"{convergence.get('total_evaluations', 0)}"
-    )
+    print(f"Evaluaciones globales: {convergence.get('total_evaluations', 0)}")
 
     print(
         f"Target alcanzado:      "
@@ -1396,8 +876,7 @@ def print_stable_optimization(
     )
 
     print(
-        f"Motivo de parada:      "
-        f"{format_stop_reason(stable_data.get('stop_reason'))}"
+        f"Motivo de parada:      {format_stop_reason(stable_data.get('stop_reason'))}"
     )
 
     print(
@@ -1405,15 +884,10 @@ def print_stable_optimization(
         f"{format_elapsed_seconds(stable_data.get('elapsed_seconds', 0.0))}"
     )
 
-    signature_hash = signature.get(
-        "hash"
-    )
+    signature_hash = signature.get("hash")
 
     if signature_hash:
-        print(
-            f"Firma solución:        "
-            f"{signature_hash}"
-        )
+        print(f"Firma solución:        {signature_hash}")
 
 
 def print_objective_breakdown(
@@ -1431,18 +905,14 @@ def print_objective_breakdown(
     print("=" * 72)
 
     if not restrictions:
-        print(
-            "No hay restricciones disponibles."
-        )
+        print("No hay restricciones disponibles.")
         return
 
     if isinstance(
         restrictions,
         dict,
     ):
-        items = tuple(
-            restrictions.items()
-        )
+        items = tuple(restrictions.items())
     else:
         items = tuple(
             (
@@ -1485,15 +955,9 @@ def print_objective_breakdown(
             )
         )
 
-        weighted_score = (
-            score
-            * weight
-        )
+        weighted_score = score * weight
 
-        contribution = (
-            weighted_score
-            / 100.0
-        )
+        contribution = weighted_score / 100.0
 
         total_weighted += weighted_score
         total_weight += weight
@@ -1509,32 +973,14 @@ def print_objective_breakdown(
 
     print("-" * 72)
 
-    weighted_average = (
-        total_weighted
-        / total_weight
-        if total_weight > 0.0
-        else 0.0
-    )
+    weighted_average = total_weighted / total_weight if total_weight > 0.0 else 0.0
 
-    print(
-        f"{'MEDIA PONDERADA':<24}"
-        f"| {weighted_average:7.2f}"
-    )
+    print(f"{'MEDIA PONDERADA':<24}| {weighted_average:7.2f}")
 
-    print(
-        f"{'PENALIZACIÓN TOTAL':<24}"
-        f"| {total_penalty:7.2f}"
-    )
+    print(f"{'PENALIZACIÓN TOTAL':<24}| {total_penalty:7.2f}")
 
-    print(
-        f"{'SCORE FINAL':<24}"
-        f"| {result.final_score:7.2f}"
-    )
+    print(f"{'SCORE FINAL':<24}| {result.final_score:7.2f}")
 
-
-# ============================================================
-# Resultado por consola
-# ============================================================
 
 def print_result(
     result: BaseReportResult,
@@ -1546,103 +992,48 @@ def print_result(
 
     print()
     print("=" * 72)
-    print(
-        "LAN CS2 TEAM BALANCER"
-    )
+    print("LAN CS2 TEAM BALANCER")
     print("=" * 72)
 
-    print(
-        f"Modo:                 "
-        f"{result.mode.label}"
-    )
+    print(f"Modo:                 {result.mode.label}")
 
     if result.optimized:
-        print(
-            f"Puntuación inicial:   "
-            f"{result.initial_score:.2f}"
-        )
+        print(f"Puntuación inicial:   {result.initial_score:.2f}")
 
-        print(
-            f"Puntuación final:     "
-            f"{result.final_score:.2f}"
-        )
+        print(f"Puntuación final:     {result.final_score:.2f}")
 
-        print(
-            f"Mejora total:         "
-            f"{result.improvement:+.2f}"
-        )
+        print(f"Mejora total:         {result.improvement:+.2f}")
 
-        print(
-            f"Movimientos:          "
-            f"{result.iterations}"
-        )
+        print(f"Movimientos:          {result.iterations}")
 
-        print(
-            f"Evaluaciones:         "
-            f"{result.total_evaluations}"
-        )
+        print(f"Evaluaciones:         {result.total_evaluations}")
 
-        print(
-            f"Tiempo optimización:  "
-            f"{result.elapsed_ms:.2f} ms"
-        )
+        print(f"Tiempo optimización:  {result.elapsed_ms:.2f} ms")
 
-        optimization_mode = (
-            getattr(
-                result,
-                "metadata",
-                {},
-            )
-            .get(
-                "optimization_mode"
-            )
-        )
+        optimization_mode = getattr(
+            result,
+            "metadata",
+            {},
+        ).get("optimization_mode")
 
-        print(
-            f"Motor optimización:   "
-            f"{str(optimization_mode or 'fast').upper()}"
-        )
+        print(f"Motor optimización:   {str(optimization_mode or 'fast').upper()}")
 
     else:
-        print(
-            f"Puntuación equilibrio:"
-            f" {result.final_score:.2f}"
-        )
+        print(f"Puntuación equilibrio: {result.final_score:.2f}")
 
-        print(
-            f"Clasificación:        "
-            f"{result.balance_label}"
-        )
+        print(f"Clasificación:        {result.balance_label}")
 
-        print(
-            f"Evaluaciones:         "
-            f"{result.total_evaluations}"
-        )
+        print(f"Evaluaciones:         {result.total_evaluations}")
 
-        print(
-            f"Tiempo evaluación:    "
-            f"{result.elapsed_ms:.2f} ms"
-        )
+        print(f"Tiempo evaluación:    {result.elapsed_ms:.2f} ms")
 
-    print(
-        f"Penalización:         "
-        f"{result.penalty:.2f}"
-    )
+    print(f"Penalización:         {result.penalty:.2f}")
 
-    print(
-        f"Composición válida:   "
-        f"{'SÍ' if result.is_valid else 'NO'}"
-    )
+    print(f"Composición válida:   {'SÍ' if result.is_valid else 'NO'}")
 
-    print(
-        f"Equipos:              "
-        f"{result.team_count}"
-    )
+    print(f"Equipos:              {result.team_count}")
 
-    print(
-        f"Jugadores:            "
-        f"{result.player_count}"
-    )
+    print(f"Jugadores:            {result.player_count}")
 
     if (
         result.optimized
@@ -1650,13 +1041,10 @@ def print_result(
             result,
             "metadata",
             {},
-        ).get(
-            "optimization_mode"
-        ) == OptimizationMode.STABLE.value
+        ).get("optimization_mode")
+        == OptimizationMode.STABLE.value
     ):
-        print_stable_optimization(
-            result
-        )
+        print_stable_optimization(result)
 
     for team_index, team in enumerate(
         result.teams,
@@ -1673,17 +1061,13 @@ def print_result(
 
         print()
         print("-" * 72)
-        print(
-            str(team_name).upper()
-        )
+        print(str(team_name).upper())
         print("-" * 72)
 
         team_powers: list[float] = []
 
         for player in team.players:
-            nickname = get_player_nickname(
-                player
-            )
+            nickname = get_player_nickname(player)
 
             elo = get_player_attribute(
                 player,
@@ -1713,51 +1097,19 @@ def print_result(
                 None,
             )
 
-            power = scoring_model.power(
-                player
-            )
+            power = scoring_model.power(player)
 
-            team_powers.append(
-                power
-            )
+            team_powers.append(power)
 
-            elo_text = (
-                str(
-                    int(
-                        float(elo)
-                    )
-                )
-                if elo is not None
-                else "N/A"
-            )
+            elo_text = str(int(float(elo))) if elo is not None else "N/A"
 
-            level_text = (
-                str(
-                    int(
-                        float(level)
-                    )
-                )
-                if level is not None
-                else "N/A"
-            )
+            level_text = str(int(float(level))) if level is not None else "N/A"
 
-            kd_text = (
-                f"{float(kd):.2f}"
-                if kd is not None
-                else "N/A"
-            )
+            kd_text = f"{float(kd):.2f}" if kd is not None else "N/A"
 
-            adr_text = (
-                f"{float(adr):.1f}"
-                if adr is not None
-                else "N/A"
-            )
+            adr_text = f"{float(adr):.1f}" if adr is not None else "N/A"
 
-            team_text = (
-                str(team_number)
-                if team_number is not None
-                else "—"
-            )
+            team_text = str(team_number) if team_number is not None else "—"
 
             print(
                 f"  {nickname:<20}"
@@ -1769,181 +1121,59 @@ def print_result(
                 f"| Team: {team_text}"
             )
 
-        average_power = (
-            sum(team_powers)
-            / len(team_powers)
-            if team_powers
-            else 0.0
-        )
+        average_power = sum(team_powers) / len(team_powers) if team_powers else 0.0
 
-        print(
-            f"  {'':20}"
-            f"| Power medio: "
-            f"{average_power:.2f}"
-        )
+        print(f"  {'':20}| Power medio: {average_power:.2f}")
 
     print()
 
 
-# ============================================================
-# Metadata
-# ============================================================
-
 def create_run_metadata(
-    players_file: Path,
-    mode: ReportMode,
+    players_file: Path, config: ApplicationConfig
 ) -> dict[str, Any]:
-    """
-    Metadata básica que acompaña al resultado.
-
-    Más adelante esta estructura podrá incluir identificador
-    de evento, usuario, versión del algoritmo, configuración, etc.
-    """
-
+    """Bootstrap metadata; the result supplies the detected report mode."""
     return {
-        "event_name": EVENT_NAME,
-
-        "source_file": str(
-            players_file
-        ),
-
-        "number_of_teams": (
-            NUMBER_OF_TEAMS
-        ),
-
-        "team_size": (
-            TEAM_SIZE
-        ),
-
-        "expected_player_count": (
-            EXPECTED_PLAYER_COUNT
-        ),
-
-        "mode": mode.value,
-
-        "optimization_mode": (
-            OPTIMIZATION_MODE.value
-            if mode is ReportMode.OPTIMIZED
-            else None
-        ),
-
-        "source": (
-            "FACEIT"
-            if RUN_FACEIT_IMPORT
-            else "CSV"
-        ),
+        "event_name": config.event.name,
+        "source_file": str(players_file),
+        "number_of_teams": config.event.number_of_teams,
+        "team_size": config.event.team_size,
+        "expected_player_count": config.event.expected_player_count,
+        "source": "FACEIT" if config.faceit.run_import else "CSV",
     }
 
 
-# ============================================================
-# Main
-# ============================================================
-
 def main() -> int:
-    """
-    Punto de entrada principal.
-
-    Flujo:
-
-        1. Obtiene/actualiza estadísticas FACEIT.
-        2. Importa Player[].
-        3. Detecta el modo mediante Team.
-        4. Ejecuta BalancingApplication.run().
-        5. GLOBAL se ejecuta completamente en application.
-        6. Valida el resultado final.
-        7. Genera el informe HTML.
-
-    La diferencia clave respecto al main anterior es que ya no
-    construye ni optimiza equipos directamente.
-
-    Toda esa responsabilidad pertenece a LanBalancer.
-    """
-
+    """Supported developer bootstrap: I/O, one application call, presentation."""
     try:
-        # ----------------------------------------------------
-        # CSV de estadísticas
-        # ----------------------------------------------------
-
-        players_file = (
-            resolve_players_file()
+        config = ApplicationConfig.production_defaults()
+        players_file = resolve_players_file(config)
+        players = CssStatsImporter(strict=config.event.importer_strict).load(
+            players_file
         )
+        validate_players(players, config.event.expected_player_count)
+        if config.debug_players:
+            print_players_debug(players)
 
-        # ----------------------------------------------------
-        # Aplicación
-        # ----------------------------------------------------
-
-        config = _composition_config()
-        composition: BalancingComposition | None = None
-
-        def compose_run(run_config: ApplicationConfig) -> BalancingComposition:
-            # Keep the run's exact scoring/export collaborators at the entrypoint.
-            nonlocal composition
-            composition = composition_root.create_balancing_composition(run_config)
-            return composition
-
-        application = BalancingApplication(
-            config, composition_factory=compose_run,
-        )
-        players = CssStatsImporter(strict=config.event.importer_strict).load(players_file)
-
-        validate_players(
+        request = BalancingRequest(
             players=players,
-            expected_player_count=(
-                EXPECTED_PLAYER_COUNT
-            ),
+            number_of_teams=config.event.number_of_teams,
+            optimization_mode=config.optimization_mode,
+            title=config.event.report_title,
+            metadata=create_run_metadata(players_file, config),
         )
-
-        if DEBUG_PLAYERS:
-            print_players_debug(
-                players
-            )
-
-        # ----------------------------------------------------
-        # Detección del modo
-        # ----------------------------------------------------
-
-        mode = LanBalancer.detect_mode(
-            players
-        )
-
-        print_mode(
-            mode
-        )
-
-        # ----------------------------------------------------
-        # Ejecución
-        # ----------------------------------------------------
-
-        result = application.run(
-            BalancingRequest(
-                players=players,
-                number_of_teams=NUMBER_OF_TEAMS,
-                optimization_mode=OPTIMIZATION_MODE,
-                title=REPORT_TITLE,
-                metadata=create_run_metadata(players_file=players_file, mode=mode),
-            )
-        )
-        assert composition is not None
-        scoring_model = composition.scoring_model
-        balancer = composition.balancer
-
-        # ----------------------------------------------------
-        # Validación
-        # ----------------------------------------------------
-
-        validate_result(
-            result=result,
-            players=players,
-        )
-
-        if DEBUG_FINAL_TEAMS:
+        application = BalancingApplication(config)
+        result = application.run(request)
+        validate_result(result, players, config)
+        # Mode is determined by the application, never by bootstrap.
+        result.metadata["mode"] = result.mode.value
+        print_mode(result.mode, config)
+        if config.debug_final_teams:
             debug_title = (
                 "EQUIPOS PREASIGNADOS EVALUADOS"
                 if result.evaluation_only
                 else (
                     "EQUIPOS ÓPTIMOS GLOBAL"
-                    if OPTIMIZATION_MODE
-                    is OptimizationMode.GLOBAL
+                    if config.optimization_mode is OptimizationMode.GLOBAL
                     else "EQUIPOS OPTIMIZADOS"
                 )
             )
@@ -1953,45 +1183,21 @@ def main() -> int:
                 title=debug_title,
             )
 
-        # ----------------------------------------------------
-        # Exportación
-        # ----------------------------------------------------
-
-        exported_path = balancer.export(
-            result=result,
-            output=OUTPUT_REPORT_FILE,
+        reporting = create_reporting_components(config)
+        exported_path = reporting.exporter.export(
+            result=result, output=config.paths.output_report
         )
-
-        # ----------------------------------------------------
-        # Consola
-        # ----------------------------------------------------
-
-        print_result(
-            result=result,
-            scoring_model=scoring_model,
-        )
-
+        print_result(result=result, scoring_model=reporting.scoring_model)
         if isinstance(result, GlobalReportResult):
             print_global_optimization(result)
-
-        print_objective_breakdown(
-            result
-        )
-
+        print_objective_breakdown(result)
         print()
-
-        print(
-            "Informe HTML generado en: "
-            f"{exported_path.resolve()}"
-        )
-
+        print(f"Informe HTML generado en: {exported_path.resolve()}")
         return 0
 
     except FileNotFoundError as error:
         print()
-        print(
-            f"ERROR DE ARCHIVO: {error}"
-        )
+        print(f"ERROR DE ARCHIVO: {error}")
 
         return 1
 
@@ -2003,22 +1209,16 @@ def main() -> int:
         AssertionError,
     ) as error:
         print()
-        print(
-            f"ERROR: {error}"
-        )
+        print(f"ERROR: {error}")
 
         return 1
 
     except KeyboardInterrupt:
         print()
-        print(
-            "Proceso cancelado por el usuario."
-        )
+        print("Proceso cancelado por el usuario.")
 
         return 130
 
 
 if __name__ == "__main__":
-    raise SystemExit(
-        main()
-    )
+    raise SystemExit(main())
