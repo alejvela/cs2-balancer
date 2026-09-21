@@ -1,10 +1,13 @@
 # CS2 Team Balancer
 
-CS2 tools for LAN events. The current release is `0.6.0`, with two main
+CS2 tools for LAN events. The current release candidate is `0.7.0`, with two main
 capabilities: **LAN Team Balancing** and **LAN Tournament Analytics & Reporting**.
-Version `0.5.0` established the engine-stabilization baseline; v0.6.0 adds the
-complete tournament analytics pipeline implemented under SCRUM-17, from map CSV
-imports to a standalone HTML report.
+Version `0.5.0` established Engine Stabilization; v0.6.0 delivered Tournament
+Analytics, from map CSV imports to a standalone HTML report. v0.7.0 prepares
+**Application Foundation**: typed configuration, explicit composition, a reusable
+balancing API and a thin developer entrypoint, preserving engine behavior.
+This candidate is not a published release. Publication and tagging belong to
+SCRUM-44 after candidate review and merge; see [release notes](RELEASE_NOTES.md).
 
 The application remains developer-oriented and has no mature public CLI.
 Balancing offers the `BalancingApplication` Python API and the supported
@@ -55,7 +58,7 @@ python main.py
 ```
 
 `main.py` is an entrypoint; the reusable API is `BalancingApplication`. The v0.7
-application foundation in development uses typed Python configuration from
+release candidate uses typed Python configuration from
 `ApplicationConfig.production_defaults()`. Customize it with `dataclasses.replace`
 and select the mode in each request:
 
