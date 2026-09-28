@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import sqrt
-from numbers import Real
 from typing import Any
 
+from models.numeric import finite_real
 from optimizer.global_search.global_search_problem import (
     GlobalSearchProblem,
 )
@@ -65,10 +65,18 @@ class PowerTeamInterval:
 
     maximum_average: float
 
+    def __post_init__(self) -> None:
+        for field_name in (
+            "current_power_sum", "minimum_total", "maximum_total",
+            "minimum_average", "maximum_average",
+        ):
+            finite_real(getattr(self, field_name), field_name)
+
     def contains(
         self,
         value: float,
     ) -> bool:
+        value = finite_real(value, "interval value")
         return (
             self.minimum_average
             <= value
@@ -172,6 +180,15 @@ class GlobalBoundResult:
         PowerTeamInterval,
         ...,
     ] = ()
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "upper_bound", "incumbent_score", "power_upper_bound",
+            "elo_upper_bound", "kd_upper_bound",
+            "minimum_unavoidable_power_spread",
+            "minimum_unavoidable_power_stddev",
+        ):
+            finite_real(getattr(self, field_name), field_name)
 
     def as_dict(
         self,
@@ -319,6 +336,7 @@ class GlobalBoundCalculator:
             in weights.values()
         )
 
+        finite_real(total_weight, "total_weight")
         if total_weight <= 0.0:
             raise ValueError(
                 "At least one bound weight "
@@ -518,6 +536,7 @@ class GlobalBoundCalculator:
             )
         )
 
+        finite_real(upper_bound, "upper_bound")
         prune = (
             upper_bound
             <= (
@@ -1084,6 +1103,7 @@ class GlobalBoundCalculator:
             * self._seed_weight
         )
 
+        finite_real(weighted, "weighted bound")
         score = (
             weighted
             / self._total_weight
@@ -1294,23 +1314,8 @@ class GlobalBoundCalculator:
         value: Any,
         field_name: str,
     ) -> float:
-        if (
-            isinstance(
-                value,
-                bool,
-            )
-            or not isinstance(
-                value,
-                Real,
-            )
-        ):
-            raise TypeError(
-                f"{field_name} must be numeric."
-            )
-
-        return float(
-            value
-        )
+        numeric = finite_real(value, field_name)
+        return numeric
 
     @classmethod
     def _validate_non_negative_number(

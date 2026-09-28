@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from numbers import Real
 from typing import Any
 
+from models.numeric import finite_real
 from objective.restriction_result import (
     RestrictionResult,
 )
@@ -41,6 +42,9 @@ class ObjectiveResult:
 
     SCORE_MINIMUM = 0.0
     SCORE_MAXIMUM = 100.0
+
+    def __post_init__(self) -> None:
+        finite_real(self.score, "score")
 
     def add_result(
         self,
@@ -81,6 +85,7 @@ class ObjectiveResult:
                 f"Duplicated restriction result '{name}'."
             )
 
+        self._validate_result_numbers(result)
         self.restrictions[name] = result
 
     def compute(
@@ -92,6 +97,10 @@ class ObjectiveResult:
         Returns:
             Puntuación final entre 0 y 100.
         """
+        finite_real(self.score, "score")
+        for result in self.restrictions.values():
+            self._validate_result_numbers(result)
+
         if not self.restrictions:
             self.score = 0.0
             return self.score
@@ -139,11 +148,9 @@ class ObjectiveResult:
                     "non-numeric weighted_score."
                 )
 
-            total += float(
-                weighted_score
-            )
+            total += finite_real(weighted_score, "weighted_score")
 
-        return total
+        return finite_real(total, "aggregate total")
 
     @property
     def total_weight(
@@ -166,9 +173,7 @@ class ObjectiveResult:
                     "non-numeric weight."
                 )
 
-            numeric_weight = float(
-                weight
-            )
+            numeric_weight = finite_real(weight, "weight")
 
             if numeric_weight < 0.0:
                 raise ValueError(
@@ -178,7 +183,7 @@ class ObjectiveResult:
 
             total += numeric_weight
 
-        return total
+        return finite_real(total, "aggregate total")
 
     @property
     def weighted_average(
@@ -187,15 +192,14 @@ class ObjectiveResult:
         """
         Puntuación media ponderada antes de aplicar penalizaciones.
         """
+        for result in self.restrictions.values():
+            self._validate_result_numbers(result)
         total_weight = self.total_weight
 
         if total_weight <= 0.0:
             return 0.0
 
-        return (
-            self.weighted_score
-            / total_weight
-        )
+        return finite_real(self.weighted_score / total_weight, "weighted_average")
 
     @property
     def penalty(
@@ -220,9 +224,7 @@ class ObjectiveResult:
                     "non-numeric penalty."
                 )
 
-            numeric_penalty = float(
-                penalty
-            )
+            numeric_penalty = finite_real(penalty, "penalty")
 
             if numeric_penalty < 0.0:
                 raise ValueError(
@@ -232,7 +234,7 @@ class ObjectiveResult:
 
             total += numeric_penalty
 
-        return total
+        return finite_real(total, "aggregate total")
 
     @property
     def is_valid(
@@ -294,6 +296,12 @@ class ObjectiveResult:
         }
 
     @staticmethod
+    def _validate_result_numbers(result: RestrictionResult) -> None:
+        # Results are mutable: validate again before zero-weight shortcuts.
+        for field_name in ("score", "penalty", "weight"):
+            finite_real(getattr(result, field_name), field_name)
+
+    @staticmethod
     def _validate_name(
         name: str,
     ) -> str:
@@ -323,7 +331,7 @@ class ObjectiveResult:
             cls.SCORE_MINIMUM,
             min(
                 cls.SCORE_MAXIMUM,
-                float(value),
+                finite_real(value, "score"),
             ),
         )
 
