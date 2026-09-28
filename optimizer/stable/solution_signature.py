@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from models.player import Player
+from models.player_identity import logical_player_identity
 from models.team import Team
 
 
@@ -170,141 +171,11 @@ class SolutionSignature:
     # Identidad del jugador
     # ========================================================
 
-    @classmethod
-    def player_identity(
-        cls,
-        player: Player,
-    ) -> str:
-        """
-        Devuelve una identidad determinista para un jugador.
+    @staticmethod
+    def player_identity(player: Player) -> str:
+        """Compatibility entry point for the shared v0.7 identity contract."""
+        return logical_player_identity(player)
 
-        Prioridad:
-
-            identity
-                ↓
-            steam_id
-                ↓
-            nickname
-                ↓
-            fallback estructural
-
-        La identidad se normaliza con casefold().
-        """
-        if player is None:
-            raise ValueError(
-                "player cannot be None."
-            )
-
-        explicit_identity = getattr(
-            player,
-            "identity",
-            None,
-        )
-
-        normalized_identity = (
-            cls._normalize_text(
-                explicit_identity
-            )
-        )
-
-        if normalized_identity:
-            return (
-                "identity:"
-                f"{normalized_identity}"
-            )
-
-        steam_id = (
-            cls._normalize_text(
-                getattr(
-                    player,
-                    "steam_id",
-                    None,
-                )
-            )
-        )
-
-        if steam_id:
-            return (
-                "steam:"
-                f"{steam_id}"
-            )
-
-        nickname = cls._normalize_text(
-            getattr(
-                player,
-                "nickname",
-                getattr(
-                    player,
-                    "nick",
-                    None,
-                ),
-            )
-        )
-
-        if nickname:
-            return (
-                "nick:"
-                f"{nickname}"
-            )
-
-        return (
-            cls._fallback_player_identity(
-                player
-            )
-        )
-
-    @classmethod
-    def _fallback_player_identity(
-        cls,
-        player: Player,
-    ) -> str:
-        """
-        Último recurso para jugadores sin identidad explícita.
-
-        Se evita utilizar id(player) porque no es estable entre
-        ejecuciones.
-
-        Esta identidad no debería utilizarse normalmente si el modelo
-        Player está correctamente construido.
-        """
-        attributes = (
-            "elo",
-            "level",
-            "kd",
-            "rating",
-            "adr",
-            "kpr",
-            "dpr",
-            "hs",
-            "kast",
-            "winrate",
-            "clutch",
-            "matches",
-            "seed",
-        )
-
-        values: list[str] = []
-
-        for attribute in attributes:
-            value = getattr(
-                player,
-                attribute,
-                None,
-            )
-
-            values.append(
-
-                    f"{attribute}="
-                    f"{cls._stable_value(value)}"
-
-            )
-
-        return (
-            "anonymous:"
-            + "|".join(
-                values
-            )
-        )
 
     # ========================================================
     # Información derivada
@@ -644,6 +515,9 @@ class SolutionSignature:
                     f"Team {index} must be a Team instance."
                 )
 
+        if len({id(team) for team in team_list}) != len(team_list):
+            raise ValueError("Duplicate Team instances are not allowed.")
+
         return team_list
 
     @staticmethod
@@ -726,57 +600,7 @@ class SolutionSignature:
     # Normalización
     # ========================================================
 
-    @staticmethod
-    def _normalize_text(
-        value: Any,
-    ) -> str | None:
-        if value is None:
-            return None
 
-        normalized = (
-            str(value)
-            .strip()
-            .casefold()
-        )
-
-        if not normalized:
-            return None
-
-        return normalized
-
-    @staticmethod
-    def _stable_value(
-        value: Any,
-    ) -> str:
-        """
-        Convierte valores simples a una representación estable.
-        """
-        if value is None:
-            return "none"
-
-        if isinstance(
-            value,
-            bool,
-        ):
-            return (
-                "true"
-                if value
-                else "false"
-            )
-
-        if isinstance(
-            value,
-            float,
-        ):
-            return (
-                f"{value:.12g}"
-            )
-
-        return (
-            str(value)
-            .strip()
-            .casefold()
-        )
 
     # ========================================================
     # Métodos especiales

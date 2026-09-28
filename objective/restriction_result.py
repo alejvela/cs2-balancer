@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from numbers import Real
 from typing import Any
+
+from models.numeric import finite_real
 
 
 @dataclass(slots=True)
@@ -87,10 +88,9 @@ class RestrictionResult:
 
             weighted_score = 2700
         """
-        return (
-            self.score
-            * self.weight
-        )
+        score = finite_real(self.score, "score")
+        weight = finite_real(self.weight, "weight")
+        return finite_real(score * weight, "weighted_score")
 
     @property
     def passed(
@@ -99,7 +99,7 @@ class RestrictionResult:
         """
         Indica si la restricción no ha generado penalización estructural.
         """
-        return self.penalty <= 0.0
+        return finite_real(self.penalty, "penalty") <= 0.0
 
     def add_detail(
         self,
@@ -173,17 +173,7 @@ class RestrictionResult:
         cls,
         value: float,
     ) -> float:
-        if isinstance(value, bool) or not isinstance(
-            value,
-            Real,
-        ):
-            raise TypeError(
-                "score must be numeric."
-            )
-
-        numeric_value = float(
-            value
-        )
+        numeric_value = finite_real(value, "score")
 
         return max(
             cls.SCORE_MINIMUM,
@@ -197,17 +187,7 @@ class RestrictionResult:
     def _validate_penalty(
         value: float,
     ) -> float:
-        if isinstance(value, bool) or not isinstance(
-            value,
-            Real,
-        ):
-            raise TypeError(
-                "penalty must be numeric."
-            )
-
-        numeric_value = float(
-            value
-        )
+        numeric_value = finite_real(value, "penalty")
 
         if numeric_value < 0.0:
             raise ValueError(
@@ -220,17 +200,7 @@ class RestrictionResult:
     def _validate_weight(
         value: float,
     ) -> float:
-        if isinstance(value, bool) or not isinstance(
-            value,
-            Real,
-        ):
-            raise TypeError(
-                "weight must be numeric."
-            )
-
-        numeric_value = float(
-            value
-        )
+        numeric_value = finite_real(value, "weight")
 
         if numeric_value < 0.0:
             raise ValueError(

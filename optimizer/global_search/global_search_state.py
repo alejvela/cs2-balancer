@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from numbers import Real
 from typing import Any
 
+from models.numeric import finite_real
 from models.player import Player
+from models.player_identity import logical_player_identity
 
 
 @dataclass(
@@ -114,7 +115,7 @@ class GlobalPlayerMetrics:
 
         if value is None:
             return (
-                f"Player-{id(self.player)}"
+                logical_player_identity(self.player)
             )
 
         return str(value)
@@ -146,6 +147,8 @@ class GlobalPlayerMetrics:
     def identity(
         self,
     ) -> tuple[str, str]:
+        # Legacy ordering key, not logical pool identity.
+        # Pool validation uses logical_player_identity().
         if self.steam_id is not None:
             return (
                 "steam",
@@ -164,29 +167,9 @@ class GlobalPlayerMetrics:
         value: Any,
         field_name: str,
     ) -> float:
-        if (
-            isinstance(
-                value,
-                bool,
-            )
-            or not isinstance(
-                value,
-                Real,
-            )
-        ):
-            raise TypeError(
-                f"{field_name} must be numeric."
-            )
-
-        numeric = float(
-            value
-        )
-
+        numeric = finite_real(value, field_name)
         if numeric < 0.0:
-            raise ValueError(
-                f"{field_name} cannot be negative."
-            )
-
+            raise ValueError(f"{field_name} cannot be negative.")
         return numeric
 
 
@@ -274,29 +257,11 @@ class GlobalTeamState:
                 "protected_seed_count cannot be negative."
             )
 
-        for field_name in (
-            "power_sum",
-            "elo_sum",
-            "kd_sum",
-        ):
-            value = getattr(
-                self,
-                field_name,
-            )
+        for field_name in ("power_sum", "elo_sum", "kd_sum"):
+            finite_real(getattr(self, field_name), field_name)
 
-            if (
-                isinstance(
-                    value,
-                    bool,
-                )
-                or not isinstance(
-                    value,
-                    Real,
-                )
-            ):
-                raise TypeError(
-                    f"{field_name} must be numeric."
-                )
+        if len(set(self.player_indices)) != len(self.player_indices):
+            raise ValueError("Duplicate player indices in team state.")
 
     @property
     def is_empty(
@@ -629,6 +594,10 @@ class GlobalSearchState:
             raise ValueError(
                 "assigned_count cannot be negative."
             )
+
+        indices = [index for team in normalized_teams for index in team.player_indices]
+        if len(set(indices)) != len(indices):
+            raise ValueError("Duplicate player indices across team states.")
 
         actual_assigned_count = sum(
             team.player_count

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from models.player_identity import logical_player_identity
 from optimizer.global_search.global_search_state import (
     GlobalPlayerMetrics,
     GlobalSearchState,
@@ -68,6 +69,10 @@ class GlobalSearchProblem:
                 "players must contain "
                 "GlobalPlayerMetrics instances."
             )
+
+        identities = [logical_player_identity(item.player) for item in players]
+        if len(set(identities)) != len(identities):
+            raise ValueError("players contains duplicated logical identities.")
 
         object.__setattr__(
             self,

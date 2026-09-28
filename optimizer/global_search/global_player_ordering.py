@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from numbers import Real
 from typing import Any
 
+from models.numeric import finite_real
+from models.player_identity import logical_player_identity
 from optimizer.global_search.global_search_state import (
     GlobalPlayerMetrics,
 )
@@ -302,6 +303,7 @@ class GlobalPlayerOrdering:
 
         # sort() es ascendente.
         # Para colocar primero mayor influence_score usamos negativo.
+        finite_real(influence_score, "influence_score")
         return (
             seed_rank,
 
@@ -347,7 +349,7 @@ class GlobalPlayerOrdering:
 
         return {
             "power_mean": (
-                sum(powers)
+                finite_real(sum(powers), "power total")
                 / len(powers)
             ),
 
@@ -357,7 +359,7 @@ class GlobalPlayerOrdering:
             ),
 
             "elo_mean": (
-                sum(elos)
+                finite_real(sum(elos), "elo total")
                 / len(elos)
             ),
 
@@ -367,7 +369,7 @@ class GlobalPlayerOrdering:
             ),
 
             "kd_mean": (
-                sum(kds)
+                finite_real(sum(kds), "kd total")
                 / len(kds)
             ),
 
@@ -444,7 +446,7 @@ class GlobalPlayerOrdering:
                 )
 
         identities = [
-            player.identity
+            logical_player_identity(player.player)
             for player in player_list
         ]
 
@@ -466,26 +468,9 @@ class GlobalPlayerOrdering:
         value: Any,
         field_name: str,
     ) -> None:
-        if (
-            isinstance(
-                value,
-                bool,
-            )
-            or not isinstance(
-                value,
-                Real,
-            )
-        ):
-            raise TypeError(
-                f"{field_name} must be numeric."
-            )
-
-        if float(
-            value
-        ) < 0.0:
-            raise ValueError(
-                f"{field_name} cannot be negative."
-            )
+        numeric = finite_real(value, field_name)
+        if numeric < 0.0:
+            raise ValueError(f"{field_name} cannot be negative.")
 
     # ========================================================
     # Diagnóstico

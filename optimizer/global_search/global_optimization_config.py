@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from numbers import Real
 from typing import Any
+
+from models.numeric import finite_real
 
 
 @dataclass(
@@ -636,23 +637,8 @@ class GlobalOptimizationConfig:
         value: Any,
         field_name: str,
     ) -> float:
-        if (
-            isinstance(
-                value,
-                bool,
-            )
-            or not isinstance(
-                value,
-                Real,
-            )
-        ):
-            raise TypeError(
-                f"{field_name} must be numeric."
-            )
-
-        return float(
-            value
-        )
+        numeric = finite_real(value, field_name)
+        return numeric
 
     @classmethod
     def _validate_non_negative_number(

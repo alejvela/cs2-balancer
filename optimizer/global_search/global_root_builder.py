@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from models.player_identity import logical_player_identity
 from optimizer.global_search.global_player_ordering import (
     GlobalPlayerOrdering,
 )
@@ -467,7 +468,7 @@ class GlobalRootBuilder:
                 )
 
         identities = [
-            player.identity
+            logical_player_identity(player.player)
             for player in player_list
         ]
 
