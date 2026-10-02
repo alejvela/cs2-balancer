@@ -321,6 +321,9 @@ def test_worse_intermediate_move_is_recorded_but_best_snapshot_is_restored():
     assert teams[1].players[0] is player_a
     assert teams[2].players[0] is player_c
     assert result.final_score == objective.evaluate(teams).score == 90
+    assert result.initial_score == 40
+    assert result.improvement == 50
+    assert result.history.final_score == 20
     assert result.final_score + LocalOptimizer.SCORE_TOLERANCE >= result.initial_score
 
 
@@ -362,4 +365,5 @@ def test_no_move_stopping_and_max_iterations_are_respected(
 
     assert strategy.searches == expected_searches
     assert result.history.is_empty
-    assert result.total_evaluations == 0
+    assert result.total_evaluations == 3 * expected_searches
+    assert result.elapsed_ms == 250 * expected_searches

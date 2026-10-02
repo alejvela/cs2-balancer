@@ -98,7 +98,7 @@ def optimization_result(
     objective = ObjectiveResult()
     objective.add_result(RestrictionResult("Quality", score, penalty=penalty))
     objective.score = score
-    return OptimizationResult(teams, objective, OptimizationHistory())
+    return OptimizationResult(teams, objective, OptimizationHistory(), initial_score=score)
 
 
 def handler(score: float, *, penalty: float = 0):

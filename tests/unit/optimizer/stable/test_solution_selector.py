@@ -29,7 +29,7 @@ def result(
         RestrictionResult("Primary", score, penalty=penalty, weight=0.0)
     )
     objective.score = score
-    return OptimizationResult(teams, objective, OptimizationHistory())
+    return OptimizationResult(teams, objective, OptimizationHistory(), initial_score=score)
 
 
 def selector(tolerance: float = 1e-6) -> SolutionSelector:

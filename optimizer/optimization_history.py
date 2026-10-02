@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter
 from collections.abc import Iterable, Iterator
 
 from optimizer.optimization_iteration import OptimizationIteration
+from optimizer.search_work import SearchWork
+from optimizer.strategies.search_result import SearchResult
 
 
 class OptimizationHistory:
@@ -26,6 +28,7 @@ class OptimizationHistory:
         iterations: Iterable[OptimizationIteration] | None = None,
     ) -> None:
         self._iterations: list[OptimizationIteration] = []
+        self._search_work: list[SearchWork] = []
 
         if iterations is not None:
             for iteration in iterations:
@@ -48,7 +51,29 @@ class OptimizationHistory:
                 "iteration must be an OptimizationIteration instance."
             )
 
+        work = SearchWork(
+            iteration.phase, iteration.strategy, iteration.neighborhood,
+            iteration.evaluations, iteration.elapsed,
+        )
         self._iterations.append(iteration)
+        self._search_work.append(work)
+
+    def add_no_move(
+        self, *, phase: str, strategy: str, neighborhood: str, result: SearchResult
+    ) -> None:
+        """Record a search without inventing an accepted iteration.
+
+        Accepted searches are recorded by add(), so the two paths are disjoint.
+        """
+        if result.has_move:
+            raise ValueError("Use add() to record an accepted movement and its work.")
+        self._search_work.append(SearchWork(
+            phase, strategy, neighborhood, result.evaluations, result.elapsed,
+        ))
+
+    @property
+    def search_work(self) -> tuple[SearchWork, ...]:
+        return tuple(self._search_work)
 
     def extend(
         self,
@@ -70,6 +95,7 @@ class OptimizationHistory:
         Elimina todo el historial.
         """
         self._iterations.clear()
+        self._search_work.clear()
 
     @property
     def iterations(self) -> tuple[OptimizationIteration, ...]:
@@ -174,8 +200,8 @@ class OptimizationHistory:
         Número total de movimientos evaluados durante la optimización.
         """
         return sum(
-            iteration.evaluations
-            for iteration in self._iterations
+            work.evaluations
+            for work in self._search_work
         )
 
     @property
@@ -184,8 +210,8 @@ class OptimizationHistory:
         Tiempo total empleado por las estrategias, en segundos.
         """
         return sum(
-            iteration.elapsed
-            for iteration in self._iterations
+            work.elapsed
+            for work in self._search_work
         )
 
     @property
@@ -309,46 +335,30 @@ class OptimizationHistory:
         )
 
     def phase_summary(self) -> dict[str, dict]:
-        """
-        Devuelve métricas agregadas por fase.
-        """
-        grouped: dict[str, list[OptimizationIteration]] = defaultdict(list)
-
-        for iteration in self._iterations:
-            grouped[iteration.phase].append(iteration)
-
-        return {
-            phase: self._summarize_group(iterations)
-            for phase, iterations in grouped.items()
-        }
+        return self._work_summary("phase")
 
     def strategy_summary(self) -> dict[str, dict]:
-        """
-        Devuelve métricas agregadas por estrategia.
-        """
-        grouped: dict[str, list[OptimizationIteration]] = defaultdict(list)
-
-        for iteration in self._iterations:
-            grouped[iteration.strategy].append(iteration)
-
-        return {
-            strategy: self._summarize_group(iterations)
-            for strategy, iterations in grouped.items()
-        }
+        return self._work_summary("strategy")
 
     def neighborhood_summary(self) -> dict[str, dict]:
-        """
-        Devuelve métricas agregadas por vecindario.
-        """
-        grouped: dict[str, list[OptimizationIteration]] = defaultdict(list)
+        return self._work_summary("neighborhood")
 
-        for iteration in self._iterations:
-            grouped[iteration.neighborhood].append(iteration)
-
-        return {
-            neighborhood: self._summarize_group(iterations)
-            for neighborhood, iterations in grouped.items()
-        }
+    def _work_summary(self, field: str) -> dict[str, dict]:
+        summaries = {}
+        for work in self._search_work:
+            name = getattr(work, field)
+            if name not in summaries:
+                summary = self._summarize_group([
+                    item for item in self._iterations if getattr(item, field) == name
+                ])
+                summary.update(searches=0, evaluations=0, elapsed=0.0, elapsed_ms=0.0)
+                summaries[name] = summary
+            summary = summaries[name]
+            summary["searches"] += 1
+            summary["evaluations"] += work.evaluations
+            summary["elapsed"] += work.elapsed
+            summary["elapsed_ms"] = summary["elapsed"] * 1000.0
+        return summaries
 
     def counts_by_phase(self) -> dict[str, int]:
         return dict(
@@ -380,6 +390,7 @@ class OptimizationHistory:
         """
         return {
             "count": self.count,
+            "search_work": [work.as_dict() for work in self._search_work],
             "initial_score": self.initial_score,
             "final_score": self.final_score,
             "total_improvement": self.total_improvement,
