@@ -813,6 +813,7 @@ class LanBalancer:
                 result.objective_result
             ),
             history=result.history,
+            initial_score=result.initial_score,
             title=resolved_title,
             metadata=existing_metadata,
         )

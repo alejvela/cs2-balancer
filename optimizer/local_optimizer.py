@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from models.numeric import finite_real
 from models.team import Team
 from optimizer.evaluator.move_evaluator import MoveEvaluator
 from optimizer.optimization_history import OptimizationHistory
@@ -10,6 +11,7 @@ from optimizer.optimization_iteration import OptimizationIteration
 from optimizer.optimization_pipeline import OptimizationPipeline
 from optimizer.optimization_result import OptimizationResult
 from optimizer.strategies.search_result import SearchResult
+from optimizer.transaction_integrity_error import TransactionIntegrityError
 
 
 class LocalOptimizer:
@@ -78,9 +80,7 @@ class LocalOptimizer:
             team_list
         )
 
-        initial_score = float(
-            initial_evaluation.score
-        )
+        initial_score = finite_real(initial_evaluation.score, "initial_evaluation.score")
 
         current_score = initial_score
         best_score = initial_score
@@ -123,9 +123,7 @@ class LocalOptimizer:
             team_list
         )
 
-        final_score = float(
-            final_evaluation.score
-        )
+        final_score = finite_real(final_evaluation.score, "final_evaluation.score")
 
         if final_score + self.SCORE_TOLERANCE < initial_score:
             self._restore(
@@ -143,9 +141,7 @@ class LocalOptimizer:
                 team_list
             )
 
-            final_score = float(
-                final_evaluation.score
-            )
+            final_score = finite_real(final_evaluation.score, "final_evaluation.score")
 
         if final_score + self.SCORE_TOLERANCE < initial_score:
             raise RuntimeError(
@@ -159,6 +155,7 @@ class LocalOptimizer:
             teams=team_list,
             objective_result=final_evaluation.objective_result,
             history=history,
+            initial_score=initial_score,
         )
 
     def _execute_phase(
@@ -196,6 +193,12 @@ class LocalOptimizer:
             )
 
             if not search_result.has_move:
+                history.add_no_move(
+                    phase=phase.name,
+                    strategy=phase.strategy_name,
+                    neighborhood=phase.neighborhood_name,
+                    result=search_result,
+                )
                 if phase.stop_when_no_move:
                     break
 
@@ -234,26 +237,24 @@ class LocalOptimizer:
                     teams
                 )
 
-                actual_score = float(
-                    actual_evaluation.score
-                )
+                actual_score = finite_real(actual_evaluation.score, "actual_evaluation.score")
 
-            except Exception:
-                self._restore(
-                    teams=teams,
-                    snapshot=before_snapshot,
-                )
-
-                self._validate_structure(
-                    teams=teams,
-                    expected=original_structure,
-                    stage=(
-                        f"phase '{phase.name}', "
-                        f"iteration {iteration_number}, "
-                        "rollback after failed move"
-                    ),
-                )
-
+            except Exception as operation_error:
+                try:
+                    self._restore(teams=teams, snapshot=before_snapshot)
+                    self._validate_structure(
+                        teams=teams,
+                        expected=original_structure,
+                        stage=(
+                            f"phase '{phase.name}', iteration {iteration_number}, "
+                            "rollback after failed move"
+                        ),
+                    )
+                except Exception as restoration_error:
+                    raise TransactionIntegrityError(
+                        "LocalOptimizer rollback could not restore the original team state.",
+                        operation_error=operation_error,
+                    ) from restoration_error
                 raise
 
             applied_result = SearchResult.from_move(
@@ -300,9 +301,7 @@ class LocalOptimizer:
             teams
         )
 
-        current_score = float(
-            restored_evaluation.score
-        )
+        current_score = finite_real(restored_evaluation.score, "restored_evaluation.score")
 
         if (
             abs(current_score - best_score)

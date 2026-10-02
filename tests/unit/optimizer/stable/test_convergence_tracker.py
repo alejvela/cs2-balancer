@@ -67,7 +67,7 @@ def result(
                 ),
             )
         )
-    return OptimizationResult(teams, objective, history)
+    return OptimizationResult(teams, objective, history, initial_score=score)
 
 
 GROUP_A = (("A", "B"), ("C", "D"))

@@ -9,6 +9,7 @@ from application.results.base_report_result import (
 from application.results.report_mode import (
     ReportMode,
 )
+from models.numeric import finite_real
 from models.team import Team
 from objective.objective_result import ObjectiveResult
 from optimizer.optimization_history import (
@@ -46,18 +47,14 @@ class OptimizationResult(BaseReportResult):
         - metadata
         - serialización común
 
-    Esta clase mantiene compatibilidad con el código anterior que
-    construía resultados mediante:
-
-        OptimizationResult(
-            teams=teams,
-            objective_result=objective_result,
-            history=history,
-        )
+    initial_score is required explicitly from the initial objective evaluation.
+    Legacy construction without it fails rather than inferring a score from
+    accepted movements or the final solution.
     """
 
     __slots__ = (
         "_history",
+        "_initial_score",
     )
 
     def __init__(
@@ -67,6 +64,8 @@ class OptimizationResult(BaseReportResult):
         history: OptimizationHistory,
         title: str | None = None,
         metadata: Mapping[str, Any] | None = None,
+        *,
+        initial_score: float,
     ) -> None:
         """
         Construye un resultado de optimización.
@@ -80,6 +79,9 @@ class OptimizationResult(BaseReportResult):
 
             history:
                 Historial completo de la optimización.
+
+            initial_score:
+                Puntuaci?n de la evaluaci?n inicial autoritativa.
 
             title:
                 Título opcional para informes o exportaciones.
@@ -101,6 +103,7 @@ class OptimizationResult(BaseReportResult):
                 "history must be an OptimizationHistory instance."
             )
 
+        self._initial_score = finite_real(initial_score, "initial_score")
         self._history = history
 
         super().__init__(
@@ -148,21 +151,8 @@ class OptimizationResult(BaseReportResult):
     def initial_score(
         self,
     ) -> float:
-        """
-        Devuelve la puntuación anterior a la optimización.
-
-        Cuando el historial no contiene una puntuación inicial, se
-        considera que no hubo una evaluación inicial separada y se
-        utiliza la puntuación final.
-        """
-        initial_score = self._history.initial_score
-
-        if initial_score is None:
-            return self.final_score
-
-        return float(
-            initial_score
-        )
+        """Score from the authoritative initial objective evaluation."""
+        return self._initial_score
 
     # ========================================================
     # Métricas de optimización
@@ -353,6 +343,8 @@ class OptimizationResult(BaseReportResult):
         history: OptimizationHistory,
         title: str | None = None,
         metadata: Mapping[str, Any] | None = None,
+        *,
+        initial_score: float,
     ) -> OptimizationResult:
         """
         Constructor explícito equivalente al constructor principal.
@@ -366,6 +358,7 @@ class OptimizationResult(BaseReportResult):
             history=history,
             title=title,
             metadata=metadata,
+            initial_score=initial_score,
         )
 
     # ========================================================

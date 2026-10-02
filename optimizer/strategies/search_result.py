@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from models.numeric import finite_real
 from optimizer.moves.move import Move
 
 
@@ -28,6 +29,16 @@ class SearchResult:
     evaluations: int = 0
 
     elapsed: float = 0.0
+
+    def __post_init__(self) -> None:
+        self.score_before = finite_real(self.score_before, "score_before")
+        self.score_after = finite_real(self.score_after, "score_after")
+        finite_real(self.evaluations, "evaluations")
+        if not isinstance(self.evaluations, int):
+            raise TypeError("evaluations must be an integer.")
+        self.elapsed = finite_real(self.elapsed, "elapsed")
+        if self.evaluations < 0 or self.elapsed < 0:
+            raise ValueError("evaluations and elapsed must be non-negative.")
 
     @property
     def improved(self) -> bool:

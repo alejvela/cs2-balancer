@@ -7,6 +7,7 @@ from evaluation.evaluation_result import EvaluationResult
 from models.team import Team
 from objective.objective_engine import ObjectiveEngine
 from optimizer.moves.move import Move
+from optimizer.transaction_integrity_error import TransactionIntegrityError
 
 
 class MoveEvaluator:
@@ -106,14 +107,24 @@ class MoveEvaluator:
             except Exception as error:
                 restoration_error = error
 
-            if evaluation_error is None:
-                if restoration_error is not None:
-                    raise RuntimeError(
-                        "MoveEvaluator could not restore the original "
-                        "team state after evaluating the movement."
-                    ) from restoration_error
+            if restoration_error is not None:
+                failure = TransactionIntegrityError(
+                    "MoveEvaluator could not restore the original team state.",
+                    operation_error=evaluation_error,
+                    undo_error=undo_error,
+                )
+                raise failure from restoration_error
 
-                if undo_error is not None:
+            if undo_error is not None:
+                if evaluation_error is not None:
+                    # Preserve the operational exception, its traceback and cause.
+                    # An explicit attribute keeps undo inspectable without cycles
+                    # in Python's implicit exception context chain.
+                    evaluation_error.undo_error = undo_error
+                    evaluation_error.add_note(
+                        f"undo() also failed: {undo_error!r}; snapshot restored."
+                    )
+                else:
                     raise RuntimeError(
                         "The movement evaluation succeeded, but undo() "
                         "failed. The original team state was restored "
