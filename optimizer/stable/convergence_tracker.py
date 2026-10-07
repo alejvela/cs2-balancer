@@ -153,6 +153,11 @@ class ConvergenceSnapshot:
     confidence: str
 
     @property
+    def best_quality_restart_index(self) -> int | None:
+        """Explicit name for legacy best_restart_index (quality, not selection)."""
+        return self.best_restart_index
+
+    @property
     def best_restart_number(
         self,
     ) -> int | None:
@@ -183,6 +188,8 @@ class ConvergenceSnapshot:
             "best_penalty": (
                 self.best_penalty
             ),
+
+            "best_quality_restart_index": self.best_quality_restart_index,
 
             "best_restart_index": (
                 self.best_restart_index

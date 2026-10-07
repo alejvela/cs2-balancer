@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from numbers import Real
 from typing import Any
 
+from models.numeric import finite_real
 from optimizer.modes.stable_optimization_config import (
     StableOptimizationConfig,
 )
@@ -532,6 +532,11 @@ class SolutionSelector:
                 "OptimizationResult instance."
             )
 
+        finite_real(result.objective_result.score, f"{field_name}.score")
+        finite_real(result.penalty, f"{field_name}.penalty")
+        for restriction in result.restrictions.values():
+            for field in ("score", "weight", "penalty"):
+                finite_real(getattr(restriction, field), f"{restriction.name}.{field}")
         return result
 
     @staticmethod
@@ -615,20 +620,7 @@ class SolutionSelector:
         value: Any,
         field_name: str,
     ) -> float:
-        if (
-            isinstance(value, bool)
-            or not isinstance(
-                value,
-                Real,
-            )
-        ):
-            raise TypeError(
-                f"{field_name} must be numeric."
-            )
-
-        return float(
-            value
-        )
+        return finite_real(value, field_name)
 
     # ========================================================
     # Resultado comparación
