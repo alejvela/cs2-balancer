@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from models.player import Player
 from models.team import Team
 from objective.objective_result import ObjectiveResult
@@ -29,7 +31,9 @@ def result(
         RestrictionResult("Primary", score, penalty=penalty, weight=0.0)
     )
     objective.score = score
-    return OptimizationResult(teams, objective, OptimizationHistory(), initial_score=score)
+    return OptimizationResult(
+        teams, objective, OptimizationHistory(), initial_score=score
+    )
 
 
 def selector(tolerance: float = 1e-6) -> SolutionSelector:
@@ -96,3 +100,27 @@ def test_identical_logical_solution_does_not_replace_current_result():
 
     assert comparison.winner is current
     assert comparison.same_solution is True
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), True])
+def test_numeric_rejects_nonfinite_and_booleans(value):
+    with pytest.raises((TypeError, ValueError)):
+        SolutionSelector._numeric(value, "tie-break")
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), True])
+@pytest.mark.parametrize("field", ["score", "penalty", "weight", "restriction_score"])
+def test_mutated_numbers_fail_even_when_selection_would_shortcut(value, field):
+    candidate = result((("A", "B"), ("C", "D")), 50)
+    if field == "score":
+        candidate.objective_result.score = value
+    else:
+        setattr(
+            candidate.restrictions["Primary"],
+            "score" if field == "restriction_score" else field,
+            value,
+        )
+    with pytest.raises((TypeError, ValueError)):
+        selector().select(None, candidate)
+    with pytest.raises((TypeError, ValueError)):
+        selector().compare(candidate, candidate)

@@ -8,7 +8,9 @@ from typing import Any
 from application.results.optimization_result import (
     OptimizationResult,
 )
+from models.numeric import finite_real
 from models.team import Team
+from objective.objective_result import ObjectiveResult
 from optimizer.local_optimizer import (
     LocalOptimizer,
 )
@@ -30,6 +32,33 @@ RestartFactory = Callable[
     [Sequence[Team], int, int],
     Sequence[Team],
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class _StructuralInvariant:
+    team_count: int
+    team_sizes: tuple[int, ...]
+    signature: SolutionSignature
+
+    @classmethod
+    def capture(cls, teams: Sequence[Team]) -> _StructuralInvariant:
+        signature = SolutionSignature.from_teams(teams)
+        return cls(
+            len(teams), tuple(sorted(len(team.players) for team in teams)), signature
+        )
+
+    def validate(self, teams: Sequence[Team], stage: str) -> SolutionSignature:
+        if len(teams) != self.team_count:
+            raise RuntimeError(
+                f"Stable optimization changed the number of teams during {stage}."
+            )
+        if tuple(sorted(len(team.players) for team in teams)) != self.team_sizes:
+            raise RuntimeError(
+                f"Stable optimization changed team sizes during {stage}."
+            )
+        signature = SolutionSignature.from_teams(teams)
+        StableOptimizer._validate_same_player_pool(self.signature, signature, stage)
+        return signature
 
 
 @dataclass(
@@ -59,7 +88,9 @@ class StableOptimizationRun:
         Número de composiciones finales diferentes observadas.
 
     best_restart_index:
-        Restart donde apareció la mejor calidad de solución.
+        Restart that produced the selected result, including tie-breaks.
+        convergence.best_quality_restart_index separately identifies the last
+        real quality improvement; its legacy best_restart_index is preserved.
 
     selection_changes:
         Número de veces que cambió la solución seleccionada.
@@ -92,6 +123,16 @@ class StableOptimizationRun:
     selection_changes: int
 
     quality_improvements: int
+
+    def __post_init__(self) -> None:
+        finite_real(self.elapsed_seconds, "elapsed_seconds")
+        finite_real(self.result.objective_result.score, "score")
+        finite_real(self.result.penalty, "penalty")
+
+    @property
+    def best_quality_restart_index(self) -> int | None:
+        """Last real quality improvement; does not follow canonical ties."""
+        return self.convergence.best_quality_restart_index
 
     @property
     def score(
@@ -178,6 +219,8 @@ class StableOptimizationRun:
                 is not None
                 else None
             ),
+
+            "best_quality_restart_index": self.best_quality_restart_index,
 
             "selection_changes": (
                 self.selection_changes
@@ -390,17 +433,16 @@ class StableOptimizer:
         Ejecuta la búsqueda estable completa y devuelve tanto el
         resultado final como la información de convergencia.
         """
+        self._last_run = None
+
         validated_initial_teams = (
             self._validate_teams(
                 initial_teams
             )
         )
 
-        original_signature = (
-            SolutionSignature.from_teams(
-                validated_initial_teams
-            )
-        )
+        invariant = _StructuralInvariant.capture(validated_initial_teams)
+        selected_restart_index: int | None = None
 
         tracker = ConvergenceTracker(
             config=self._config
@@ -454,19 +496,7 @@ class StableOptimizer:
                 )
             )
 
-            restart_signature = (
-                SolutionSignature.from_teams(
-                    restart_teams
-                )
-            )
-
-            self._validate_same_player_pool(
-                expected=original_signature,
-                actual=restart_signature,
-                stage=(
-                    f"restart {restart_index}"
-                ),
-            )
+            invariant.validate(restart_teams, f"restart {restart_index}")
 
             # ------------------------------------------------
             # Optimización local.
@@ -484,19 +514,8 @@ class StableOptimizer:
                 )
             )
 
-            result_signature = (
-                SolutionSignature.from_teams(
-                    result.teams
-                )
-            )
-
-            self._validate_same_player_pool(
-                expected=original_signature,
-                actual=result_signature,
-                stage=(
-                    f"optimized restart "
-                    f"{restart_index}"
-                ),
+            result_signature = invariant.validate(
+                result.teams, f"optimized restart {restart_index}"
             )
 
             # ------------------------------------------------
@@ -505,6 +524,7 @@ class StableOptimizer:
 
             if selected_result is None:
                 selected_result = result
+                selected_restart_index = restart_index
 
                 selected_signature = (
                     result_signature
@@ -544,6 +564,7 @@ class StableOptimizer:
                     is result
                 ):
                     selected_result = result
+                    selected_restart_index = restart_index
 
                     selected_signature = (
                         result_signature
@@ -602,6 +623,11 @@ class StableOptimizer:
                 )
             )
 
+        if invariant.validate(selected_result.teams, "selected result") != selected_signature:
+            raise RuntimeError("Selected solution changed after local optimization.")
+        selected_result = self._verify_selected_result(selected_result)
+        if invariant.validate(selected_result.teams, "final verification") != selected_signature:
+            raise RuntimeError("Selected solution changed during final verification.")
         snapshot = tracker.snapshot()
 
         elapsed_seconds = max(
@@ -632,7 +658,7 @@ class StableOptimizer:
             ),
 
             best_restart_index=(
-                tracker.best_restart_index
+                selected_restart_index
             ),
 
             selection_changes=(
@@ -647,6 +673,51 @@ class StableOptimizer:
         self._last_run = run
 
         return run
+
+    def _verify_selected_result(
+        self, selected: OptimizationResult
+    ) -> OptimizationResult:
+        # Reuse the exact engine used by local move evaluation, never rebuild it.
+        verified = self._local_optimizer.evaluator.objective.evaluate(selected.teams)
+        if not isinstance(verified, ObjectiveResult):
+            raise TypeError("Final verification must return ObjectiveResult.")
+        claimed = selected.objective_result
+        tolerance = self._config.score_tolerance
+
+        def consistent(
+            first: object, second: object, field: str, *, exact: bool = False
+        ) -> None:
+            left = finite_real(first, field)
+            right = finite_real(second, field)
+            mismatch = left != right if exact else abs(left - right) > tolerance
+            if mismatch:
+                raise RuntimeError(f"Final verification inconsistent {field}.")
+
+        consistent(claimed.score, verified.score, "score")
+        consistent(claimed.penalty, verified.penalty, "penalty", exact=True)
+        if claimed.restrictions.keys() != verified.restrictions.keys():
+            raise RuntimeError("Final verification inconsistent restrictions.")
+        for name, actual in verified.restrictions.items():
+            expected = claimed.restrictions[name]
+            if expected.name != actual.name or expected.details != actual.details:
+                raise RuntimeError(
+                    f"Final verification inconsistent restriction {name}."
+                )
+            for field in ("score", "weight", "penalty"):
+                consistent(
+                    getattr(expected, field),
+                    getattr(actual, field),
+                    f"{name}.{field}",
+                    exact=field != "score",
+                )
+        return OptimizationResult(
+            teams=selected.teams,
+            objective_result=verified,
+            history=selected.history,
+            initial_score=selected.initial_score,
+            title=selected.title,
+            metadata=selected.metadata,
+        )
 
     # ========================================================
     # Restart
@@ -854,6 +925,11 @@ class StableOptimizer:
                 "return OptimizationResult."
             )
 
+        finite_real(result.objective_result.score, "score")
+        finite_real(result.penalty, "penalty")
+        for restriction in result.restrictions.values():
+            for field in ("score", "weight", "penalty"):
+                finite_real(getattr(restriction, field), f"{restriction.name}.{field}")
         return result
 
     # ========================================================

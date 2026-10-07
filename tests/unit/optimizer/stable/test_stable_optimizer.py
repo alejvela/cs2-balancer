@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from copy import deepcopy
+from types import SimpleNamespace
 
 import pytest
 
@@ -32,13 +34,27 @@ class ScriptedLocalOptimizer(LocalOptimizer):
         self, handlers: Sequence[Callable[[Sequence[Team]], OptimizationResult]]
     ) -> None:
         self.handlers = list(handlers)
+        self.evaluations = {}
+        self.verification_calls = []
+        self._evaluator = SimpleNamespace(
+            objective=SimpleNamespace(evaluate=self.verify)
+        )
         self.calls: list[Sequence[Team]] = []
 
     def optimize(self, teams: Sequence[Team]) -> OptimizationResult:
         self.calls.append(teams)
         if not self.handlers:
             raise AssertionError("unexpected local optimization")
-        return self.handlers.pop(0)(teams)
+        result = self.handlers.pop(0)(teams)
+        if isinstance(result, OptimizationResult):
+            self.evaluations[tuple(id(team) for team in result.teams)] = deepcopy(
+                result.objective_result
+            )
+        return result
+
+    def verify(self, teams):
+        self.verification_calls.append(teams)
+        return deepcopy(self.evaluations[tuple(id(team) for team in teams)])
 
 
 class RecordingFactory:
@@ -98,7 +114,9 @@ def optimization_result(
     objective = ObjectiveResult()
     objective.add_result(RestrictionResult("Quality", score, penalty=penalty))
     objective.score = score
-    return OptimizationResult(teams, objective, OptimizationHistory(), initial_score=score)
+    return OptimizationResult(
+        teams, objective, OptimizationHistory(), initial_score=score
+    )
 
 
 def handler(score: float, *, penalty: float = 0):
@@ -186,7 +204,7 @@ def test_restart_indices_seeds_calls_and_hard_cap_are_deterministic():
     assert run.result.score == 60
 
 
-def test_optimize_returns_exact_selected_result_and_details_update_last_run():
+def test_optimize_returns_verified_result_and_details_update_last_run():
     factory = RecordingFactory([GROUP_A])
     created: list[OptimizationResult] = []
 
@@ -209,7 +227,9 @@ def test_optimize_returns_exact_selected_result_and_details_update_last_run():
 
     selected = optimizer.optimize(initial_teams())
 
-    assert selected is created[0]
+    assert selected is not created[0]
+    assert selected.history is created[0].history
+    assert selected.objective_result is not created[0].objective_result
     assert optimizer.last_run is not None
     assert optimizer.last_run.result is selected
     assert optimizer.require_last_run() is optimizer.last_run
@@ -241,7 +261,9 @@ def test_optimize_with_details_exposes_selected_result_signature_and_run_metadat
     run = optimizer.optimize_with_details(initial_teams())
 
     assert isinstance(run, StableOptimizationRun)
-    assert run.result is created[1]
+    assert run.result is not created[1]
+    assert run.result.history is created[1].history
+    assert run.result.initial_score == created[1].initial_score
     assert run.signature == SolutionSignature.from_teams(run.result.teams)
     assert run.completed_restarts == 2
     assert run.unique_solutions == 2
@@ -356,7 +378,8 @@ def test_equal_quality_canonical_replacement_changes_selection_not_quality():
     assert run.signature == SolutionSignature.from_teams(run.result.teams)
     assert run.selection_changes == 2
     assert run.quality_improvements == 1
-    assert run.best_restart_index == 0
+    assert run.best_restart_index == 1
+    assert run.convergence.best_restart_index == 0
     assert run.convergence.restarts_without_improvement == 1
 
 
@@ -431,12 +454,19 @@ def test_later_restart_is_reproducible_for_same_input_index_and_seed():
     assert SolutionSignature.from_teams(first) == SolutionSignature.from_teams(second)
 
 
-def test_real_production_style_integration_matches_fresh_objective_evaluation():
+def test_real_production_style_integration_matches_fresh_objective_evaluation(monkeypatch):
     low = Player("low")
     target = Player("target")
     teams = [Team(1, [low]), Team(2, [target])]
     before = tuple(tuple(team.players) for team in teams)
     objective = ObjectiveEngine([FirstPlayerRestriction()])
+    evaluations = []
+    evaluate = objective.evaluate
+    def recording_evaluate(teams):
+        result = evaluate(teams)
+        evaluations.append(result)
+        return result
+    monkeypatch.setattr(objective, "evaluate", recording_evaluate)
     local = LocalOptimizer(
         MoveEvaluator(objective),
         OptimizationPipeline(
@@ -462,6 +492,8 @@ def test_real_production_style_integration_matches_fresh_objective_evaluation():
     )
 
     run = optimizer.optimize_with_details(teams)
+    assert run.result.objective_result is evaluations[-1]
+    assert local.evaluator.objective is objective
     fresh_score = objective.evaluate(run.result.teams).score
 
     assert fresh_score == run.result.score == 90
@@ -475,3 +507,319 @@ def test_real_production_style_integration_matches_fresh_objective_evaluation():
         result_team is not input_team
         for result_team, input_team in zip(run.result.teams, teams, strict=True)
     )
+
+
+# SCRUM-48: all corrupt boundary outputs fail the whole run.
+def single_config(**overrides):
+    return config(
+        maximum_restarts=1,
+        minimum_restarts=1,
+        convergence_patience=1,
+        target_confirmation_restarts=1,
+        **overrides,
+    )
+
+
+@pytest.mark.parametrize(
+    "stage", ["initial", "factory", "local", "selector", "tracker", "verification"]
+)
+def test_success_then_failure_clears_last_run(stage, monkeypatch):
+    local = ScriptedLocalOptimizer([handler(50)] * 4)
+    optimizer = StableOptimizer(
+        local, lambda teams, index, seed: teams,
+        config(maximum_restarts=2, minimum_restarts=2, convergence_patience=2,
+               target_confirmation_restarts=2),
+    )
+    optimizer.optimize(initial_teams())
+    assert optimizer.require_last_run() is not None
+
+    def fail(*args, **kwargs):
+        raise LookupError("original failure")
+
+    teams = initial_teams()
+    if stage == "initial":
+        teams = None
+    elif stage == "factory":
+        optimizer._restart_factory = fail
+    elif stage == "local":
+        local.handlers = [fail]
+    elif stage == "selector":
+        monkeypatch.setattr(optimizer.selector, "compare", fail)
+    elif stage == "tracker":
+        from optimizer.stable.convergence_tracker import ConvergenceTracker
+
+        monkeypatch.setattr(ConvergenceTracker, "register", fail)
+    else:
+        local.evaluator.objective.evaluate = fail
+    with pytest.raises(ValueError if stage == "initial" else LookupError):
+        optimizer.optimize_with_details(teams)
+    assert optimizer.last_run is None
+    with pytest.raises(RuntimeError):
+        optimizer.require_last_run()
+
+
+@pytest.mark.parametrize("stage", ["restart", "local"])
+@pytest.mark.parametrize(
+    "corruption", ["count", "sizes", "added", "removed", "substituted", "duplicate"]
+)
+def test_structure_and_pool_corruption_fails_before_selection(
+    stage, corruption, monkeypatch
+):
+    def corrupt(teams):
+        players = [player for team in teams for player in team.players]
+        if corruption == "count":
+            return [Team(1, players)]
+        if corruption == "sizes":
+            return [Team(1, players[:1]), Team(2, players[1:])]
+        if corruption == "added":
+            players.append(Player("extra"))
+        elif corruption == "removed":
+            players.pop()
+        elif corruption == "substituted":
+            players[-1] = Player("replacement")
+        elif corruption == "duplicate":
+            players[-1] = Player("a")
+        return [Team(1, players[:2]), Team(2, players[2:])]
+
+    local = ScriptedLocalOptimizer(
+        [lambda teams: optimization_result(corrupt(teams), 50)]
+    )
+    factory = (
+        (lambda teams, index, seed: corrupt(teams))
+        if stage == "restart"
+        else (lambda teams, index, seed: teams)
+    )
+    optimizer = StableOptimizer(local, factory, single_config())
+
+    def selection_must_not_run(*args, **kwargs):
+        raise AssertionError("corrupt structure reached comparison")
+
+    monkeypatch.setattr(optimizer.selector, "compare", selection_must_not_run)
+    with pytest.raises((RuntimeError, ValueError)):
+        optimizer.optimize(initial_teams())
+    assert len(local.calls) == (0 if stage == "restart" else 1)
+    assert not local.verification_calls
+    assert optimizer.last_run is None
+
+
+def test_unequal_sizes_team_reordering_and_fresh_logical_players_are_valid():
+    source = [Team(1, [Player("A")]), Team(2, [Player("B"), Player("C"), Player("D")])]
+
+    def factory(teams, index, seed):
+        return [
+            Team(7, [Player("b"), Player("c"), Player("d")]),
+            Team(8, [Player("a")]),
+        ]
+
+    optimizer = StableOptimizer(
+        ScriptedLocalOptimizer([handler(50)]), factory, single_config()
+    )
+    run = optimizer.optimize_with_details(source)
+    assert sorted(len(team.players) for team in run.result.teams) == [1, 3]
+    assert run.signature.same_player_pool(SolutionSignature.from_teams(source))
+
+
+@pytest.mark.parametrize(
+    "change", ["score", "penalty", "restriction_score", "weight", "names", "details"]
+)
+def test_independent_verification_detects_inconsistent_objective_and_clears_state(
+    change,
+):
+    local = ScriptedLocalOptimizer([handler(50), handler(50)])
+    optimizer = StableOptimizer(
+        local, lambda teams, index, seed: teams, single_config()
+    )
+    optimizer.optimize(initial_teams())
+    original_verify = local.verify
+
+    def verify(teams):
+        value = original_verify(teams)
+        if change == "score":
+            value.score += 1
+        elif change == "names":
+            value.restrictions = {}
+        elif change == "details":
+            value.restrictions["Quality"].details = {"changed": True}
+        else:
+            field = "score" if change == "restriction_score" else change
+            setattr(
+                value.restrictions["Quality"],
+                field,
+                getattr(value.restrictions["Quality"], field) + 1,
+            )
+        return value
+
+    local.evaluator.objective.evaluate = verify
+    with pytest.raises(RuntimeError, match="Final verification inconsistent"):
+        optimizer.optimize(initial_teams())
+    assert optimizer.last_run is None
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), True])
+@pytest.mark.parametrize("field", ["score", "restriction_score", "penalty", "weight"])
+def test_final_verification_rejects_nonfinite_or_boolean_values(value, field):
+    local = ScriptedLocalOptimizer([handler(50)])
+
+    def verify(teams):
+        objective = local.verify(teams)
+        if field == "score":
+            objective.score = value
+        else:
+            setattr(
+                objective.restrictions["Quality"],
+                "score" if field == "restriction_score" else field,
+                value,
+            )
+        return objective
+
+    local.evaluator.objective.evaluate = verify
+    optimizer = StableOptimizer(
+        local, lambda teams, index, seed: teams, single_config()
+    )
+    with pytest.raises((ValueError, TypeError)):
+        optimizer.optimize(initial_teams())
+    assert optimizer.last_run is None
+
+
+def test_verified_result_uses_fresh_objective_and_preserves_selected_local_work():
+    from optimizer.strategies.search_result import SearchResult
+
+    created = []
+
+    def build(teams):
+        result = optimization_result(teams, 50)
+        result._initial_score = 17
+        result.history.add_no_move(
+            phase="test",
+            strategy="test",
+            neighborhood="test",
+            result=SearchResult(
+                None, score_before=50, score_after=50, evaluations=7, elapsed=0.5
+            ),
+        )
+        created.append(result)
+        return result
+
+    local = ScriptedLocalOptimizer([build])
+    authoritative = []
+
+    def verify(teams):
+        value = local.verify(teams)
+        value.score += 0.0000001
+        authoritative.append(value)
+        return value
+
+    local.evaluator.objective.evaluate = verify
+    optimizer = StableOptimizer(
+        local, lambda teams, index, seed: teams, single_config()
+    )
+    result = optimizer.optimize(initial_teams())
+    assert result.objective_result is authoritative[0]
+    assert result.initial_score == 17
+    assert result.history is created[0].history
+    assert result.history.search_work == created[0].history.search_work
+    assert result.total_evaluations == 7
+    assert all(a is b for a, b in zip(result.teams, created[0].teams, strict=True))
+    assert len(local.verification_calls) == 1
+
+
+def test_canonical_tie_replay_preserves_all_convergence_records(monkeypatch):
+    import optimizer.stable.stable_optimizer as stable_module
+    from optimizer.stable.convergence_tracker import ConvergenceTracker
+
+    trackers = []
+
+    class RecordingTracker(ConvergenceTracker):
+        def __post_init__(self):
+            super().__post_init__()
+            trackers.append(self)
+
+    monkeypatch.setattr(stable_module, "ConvergenceTracker", RecordingTracker)
+    runs = []
+    for _ in range(2):
+        optimizer = StableOptimizer(
+            ScriptedLocalOptimizer([handler(50), handler(50), handler(50)]),
+            RecordingFactory([GROUP_B, GROUP_A, GROUP_C]),
+            config(),
+        )
+        runs.append(optimizer.optimize_with_details(initial_teams()))
+    assert runs[0].signature == runs[1].signature
+    assert runs[0].best_restart_index == runs[1].best_restart_index == 1
+    assert runs[0].completed_restarts == runs[1].completed_restarts == 3
+    assert runs[0].quality_improvements == runs[1].quality_improvements == 1
+    assert runs[0].as_dict()["best_quality_restart_index"] == 0
+    assert runs[0].convergence.as_dict()["best_quality_restart_index"] == 0
+
+    def records(tracker):
+        return [
+            {
+                key: value
+                for key, value in record.as_dict().items()
+                if key != "elapsed_ms"
+            }
+            for record in tracker.records
+        ]
+
+    assert records(trackers[0]) == records(trackers[1])
+    assert [record.improved_best for record in trackers[0].records] == [
+        True,
+        False,
+        False,
+    ]
+    first = runs[0].convergence.as_dict()
+    second = runs[1].convergence.as_dict()
+    first.pop("elapsed_seconds")
+    second.pop("elapsed_seconds")
+    assert first == second
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), True])
+def test_nonfinite_local_result_fails_before_tracking(value, monkeypatch):
+    from optimizer.stable.convergence_tracker import ConvergenceTracker
+    def corrupt(teams):
+        result = optimization_result(teams, 50)
+        result.objective_result.score = value
+        return result
+    def should_not_register(*args, **kwargs):
+        raise AssertionError("invalid local score reached tracker")
+    monkeypatch.setattr(ConvergenceTracker, "register", should_not_register)
+    optimizer = StableOptimizer(ScriptedLocalOptimizer([corrupt]),
+                                lambda teams, index, seed: teams, single_config())
+    with pytest.raises((ValueError, TypeError)):
+        optimizer.optimize(initial_teams())
+    assert optimizer.last_run is None
+
+
+def test_unavailable_authoritative_verification_is_a_hard_failure():
+    local = ScriptedLocalOptimizer([handler(50)])
+    local.evaluator.objective.evaluate = lambda teams: object()
+    optimizer = StableOptimizer(local, lambda teams, index, seed: teams, single_config())
+    with pytest.raises(TypeError, match="ObjectiveResult"):
+        optimizer.optimize(initial_teams())
+    assert optimizer.last_run is None
+
+
+@pytest.mark.parametrize("stage", ["later_restart", "verification"])
+def test_selected_signature_cannot_become_stale_through_mutation(stage):
+    local = ScriptedLocalOptimizer([handler(50), handler(50)])
+    captured = []
+    def mutate(teams):
+        teams[0].players[1], teams[1].players[0] = teams[1].players[0], teams[0].players[1]
+    def factory(teams, index, seed):
+        if not index:
+            captured.append(teams)
+        elif stage == "later_restart":
+            mutate(captured[0])
+        return teams
+    if stage == "verification":
+        def verify(teams):
+            value = local.verify(teams)
+            mutate(teams)
+            return value
+        local.evaluator.objective.evaluate = verify
+    optimizer = StableOptimizer(local, factory,
+                                config(maximum_restarts=2, minimum_restarts=2,
+                                       convergence_patience=2, target_confirmation_restarts=2))
+    with pytest.raises(RuntimeError, match="Selected solution changed"):
+        optimizer.optimize(initial_teams())
+    assert optimizer.last_run is None
