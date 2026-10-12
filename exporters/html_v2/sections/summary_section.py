@@ -274,17 +274,17 @@ class SummarySection(HtmlSection):
 
         cards = (
             cls._global_metric_card(
-                label="Incumbent STABLE",
-                value=f"{context.global_initial_incumbent_score:.2f}",
-                detail="Punto de partida de la búsqueda global",
+                label="Sin incumbent" if context.global_initial_incumbent_score is None else "Incumbent STABLE",
+                value=cls._format_number(context.global_initial_incumbent_score),
+                detail="No existe baseline inicial" if context.global_initial_incumbent_score is None else "Punto de partida de la búsqueda global",
             ),
             cls._global_metric_card(
                 label="Mejora GLOBAL",
-                value=f"{context.global_improvement:+.2f}",
-                detail="Puntos añadidos sobre STABLE",
+                value=cls._format_signed_number(context.global_improvement),
+                detail="No aplicable" if context.global_improvement is None else "Puntos añadidos sobre STABLE",
                 tone=(
                     "positive"
-                    if context.global_improvement > 0.0
+                    if context.global_improvement is not None and context.global_improvement > 0.0
                     else "neutral"
                 ),
             ),
@@ -517,10 +517,10 @@ class SummarySection(HtmlSection):
         else:
             improvement_tone = (
                 "positive"
-                if context.improvement > 0.0
+                if context.improvement is not None and context.improvement > 0.0
                 else (
                     "negative"
-                    if context.improvement < 0.0
+                    if context.improvement is not None and context.improvement < 0.0
                     else "neutral"
                 )
             )
@@ -531,7 +531,7 @@ class SummarySection(HtmlSection):
                     value=self._format_number(
                         context.initial_score
                     ),
-                    detail="Antes de optimizar",
+                    detail="Sin incumbent inicial" if context.initial_score is None else "Antes de optimizar",
                     tone="neutral",
                 ),
 
@@ -553,8 +553,9 @@ class SummarySection(HtmlSection):
                         context.improvement
                     ),
                     detail=(
+                        "No aplicable" if context.improvement is None else
                         "Incremento de puntuación"
-                        if context.improvement > 0.0
+                        if context.improvement is not None and context.improvement > 0.0
                         else (
                             "Sin cambios"
                             if context.improvement == 0.0
@@ -1416,9 +1417,11 @@ class SummarySection(HtmlSection):
 
     @staticmethod
     def _format_signed_number(
-        value: float | int,
+        value: float | int | None,
         decimals: int = 2,
     ) -> str:
+        if value is None:
+            return "N/A"
         return (
             f"{float(value):+.{decimals}f}"
         )

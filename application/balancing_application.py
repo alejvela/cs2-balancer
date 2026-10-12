@@ -24,7 +24,7 @@ class GlobalRunner(Protocol):
         *,
         request: BalancingRequest,
         composition: BalancingComposition,
-        warm_start: BaseReportResult,
+        warm_start: BaseReportResult | None,
     ) -> BaseReportResult: ...
 
 
@@ -66,12 +66,15 @@ class BalancingApplication:
             request.optimization_mode is OptimizationMode.GLOBAL
             and balancer.detect_mode(request.players) is ReportMode.OPTIMIZED
         )
-        result = balancer.run_players(
-            players=request.players,
-            number_of_teams=request.number_of_teams,
-            title=request.title,
-            metadata=dict(request.metadata or {}),
-        )
+        if global_execution and not config.global_search.use_incumbent:
+            result = None
+        else:
+            result = balancer.run_players(
+                players=request.players,
+                number_of_teams=request.number_of_teams,
+                title=request.title,
+                metadata=dict(request.metadata or {}),
+            )
         if global_execution:
             result = self._global_runner.run(
                 request=request,

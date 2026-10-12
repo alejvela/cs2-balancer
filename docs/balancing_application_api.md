@@ -127,3 +127,10 @@ the request/result boundary. SCRUM-42 completes the thin entrypoint;
 engine hardening remains v0.8 and CLI remains v0.9. Existing restart-validation
 differences, GLOBAL flag behavior and player/history identity semantics are
 unchanged. Release preparation and the final v0.7 release remain separate work.
+
+
+GLOBAL `use_incumbent=False` skips the STABLE warm start and returns
+`initial_score`, `initial_incumbent_score` and `improvement` as None/null.
+Enabled-incumbent production behavior is preserved. See
+[GLOBAL configuration/input contracts](global_input_config_contracts.md) for the
+v0.8 removed fields and immutable pruning-policy wiring.

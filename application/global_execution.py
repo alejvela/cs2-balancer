@@ -1,8 +1,8 @@
-"""GLOBAL player adaptation, execution and verification around a STABLE warm start."""
+"""GLOBAL adaptation, execution and verification with an optional warm start."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from application.balancing_request import BalancingRequest
@@ -11,6 +11,7 @@ from application.results.global_report_result import GlobalReportResult
 from configuration import global_factory
 from configuration.application_config import ApplicationConfig
 from configuration.composition_root import BalancingComposition
+from models.numeric import finite_real
 from objective.objective_engine import ObjectiveEngine
 from optimizer.global_search.global_optimization_result import GlobalOptimizationResult
 from optimizer.global_search.global_optimizer import GlobalOptimizer
@@ -108,21 +109,22 @@ def run_global_optimization(
     players: Iterable[Any],
     scoring_model: ScoringModel,
     objective_engine: ObjectiveEngine,
-    stable_result: BaseReportResult,
+    stable_result: BaseReportResult | None = None,
     *,
     config: ApplicationConfig,
     optimizer_factory: Callable[[ApplicationConfig, ObjectiveEngine], GlobalOptimizer]
     | None = None,
     title: str | None = None,
+    metadata: Mapping[str, Any] | None = None,
 ) -> tuple[
     GlobalReportResult,
     GlobalOptimizationResult,
 ]:
-    """Execute and verify GLOBAL using the exact STABLE incumbent.
+    """Execute and verify GLOBAL, optionally using the exact STABLE incumbent.
 
     The tuple, factory override and title override preserve the legacy helper
     contract. ApplicationGlobalRunner exposes only the report and uses the
-    production factories and warm-start title without overrides.
+    production factories, preserving warm-start data only when enabled.
     """
 
     problem = global_factory.create_global_problem(
@@ -137,17 +139,23 @@ def run_global_optimization(
     optimizer = factory(config, objective_engine)
     search_config = config.global_search
 
-    global_result = optimizer.optimize(
-        problem=problem,
-        incumbent_teams=stable_result.teams,
-        incumbent_score=stable_result.final_score,
-    )
+    if search_config.use_incumbent:
+        if stable_result is None:
+            raise ValueError("STABLE result is required when use_incumbent=True.")
+        global_result = optimizer.optimize(
+            problem=problem,
+            incumbent_teams=stable_result.teams,
+            incumbent_score=stable_result.final_score,
+        )
+    else:
+        global_result = optimizer.optimize(problem=problem)
 
     # Re-evaluación final con la autoridad real del ObjectiveEngine.
     objective_result = objective_engine.evaluate(global_result.teams)
 
     if (
-        abs(float(objective_result.score) - float(global_result.score))
+        abs(finite_real(objective_result.score, "objective score")
+            - finite_real(global_result.score, "GLOBAL score"))
         > search_config.score_tolerance
     ):
         raise RuntimeError(
@@ -157,13 +165,7 @@ def run_global_optimization(
             f"ObjectiveEngine={objective_result.score:.8f}."
         )
 
-    metadata = dict(
-        getattr(
-            stable_result,
-            "metadata",
-            {},
-        )
-    )
+    metadata = dict(metadata if metadata is not None else getattr(stable_result, "metadata", {}))
 
     metadata["optimization_applied"] = True
     metadata["optimization_mode"] = OptimizationMode.GLOBAL.value
@@ -191,7 +193,7 @@ def run_global_optimization(
         objective_result=objective_result,
         initial_score=global_result.initial_incumbent_score,
         global_result=global_result,
-        title=stable_result.title if title is None else title,
+        title=getattr(stable_result, "title", None) if title is None else title,
         metadata=metadata,
     )
 
@@ -202,14 +204,14 @@ def run_global_optimization(
 
 
 class ApplicationGlobalRunner:
-    """Default GLOBAL executor; the application has already produced STABLE."""
+    """Default GLOBAL executor; warm_start is absent when incumbent use is disabled."""
 
     def run(
         self,
         *,
         request: BalancingRequest,
         composition: BalancingComposition,
-        warm_start: BaseReportResult,
+        warm_start: BaseReportResult | None,
     ) -> BaseReportResult:
         report, _ = run_global_optimization(
             players=request.players,
@@ -217,5 +219,7 @@ class ApplicationGlobalRunner:
             objective_engine=composition.objective_engine,
             stable_result=warm_start,
             config=composition.config,
+            title=request.title if warm_start is None else None,
+            metadata=request.metadata if warm_start is None else None,
         )
         return report

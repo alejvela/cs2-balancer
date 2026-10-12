@@ -6,6 +6,7 @@ from typing import Any
 
 from application.results.base_report_result import BaseReportResult
 from application.results.report_mode import ReportMode
+from models.numeric import finite_real
 from optimizer.global_search.global_optimization_result import GlobalOptimizationResult
 
 
@@ -27,12 +28,17 @@ class GlobalReportResult(BaseReportResult):
         self,
         teams,
         objective_result,
-        initial_score: float,
+        initial_score: float | None,
         global_result: GlobalOptimizationResult,
         title: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        self._initial_score = float(initial_score)
+        self._initial_score = (
+            finite_real(initial_score, "initial_score") if initial_score is not None else None
+        )
+
+        if self._initial_score != global_result.initial_incumbent_score:
+            raise ValueError("Report initial_score must match the GLOBAL initial incumbent.")
 
         self._global_result = global_result
 
@@ -48,7 +54,7 @@ class GlobalReportResult(BaseReportResult):
         return ReportMode.OPTIMIZED
 
     @property
-    def initial_score(self) -> float:
+    def initial_score(self) -> float | None:
         return self._initial_score
 
     @property
@@ -60,7 +66,9 @@ class GlobalReportResult(BaseReportResult):
         return self.final_score
 
     @property
-    def improvement(self) -> float:
+    def improvement(self) -> float | None:
+        if self.initial_score is None:
+            return None
         return self.final_score - self.initial_score
 
     @property
@@ -122,8 +130,8 @@ class GlobalReportResult(BaseReportResult):
         return self.global_stop_reason == "SEARCH_EXHAUSTED"
 
     @property
-    def initial_incumbent_score(self) -> float:
-        return float(self._global_result.initial_incumbent_score)
+    def initial_incumbent_score(self) -> float | None:
+        return self._global_result.initial_incumbent_score
 
     @property
     def capacity_prunes(self) -> int:
@@ -144,3 +152,11 @@ class GlobalReportResult(BaseReportResult):
     @property
     def stop_reason(self) -> str:
         return self.global_stop_reason
+
+    def __repr__(self) -> str:
+        if self.initial_score is not None:
+            return super().__repr__()
+        return (
+            f"{self.__class__.__name__}(score={self.final_score:.2f}, "
+            f"initial_score={self.initial_score!r}, improvement={self.improvement!r})"
+        )

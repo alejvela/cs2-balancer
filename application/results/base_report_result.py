@@ -95,7 +95,7 @@ class BaseReportResult(ABC):
     @abstractmethod
     def initial_score(
         self,
-    ) -> float:
+    ) -> float | None:
         """
         Puntuación anterior al proceso específico de la subclase.
         """
@@ -202,10 +202,12 @@ class BaseReportResult(ABC):
     @property
     def improvement(
         self,
-    ) -> float:
+    ) -> float | None:
         """
         Diferencia entre la puntuación final y la inicial.
         """
+        if self.initial_score is None:
+            return None
         return (
             self.final_score
             - self.initial_score

@@ -217,10 +217,7 @@ def test_production_global_configuration_and_bound_composition():
         "use_seed_pruning": True,
         "use_capacity_pruning": True,
         "use_power_bound": True,
-        "use_elo_bound": False,
-        "deterministic": True,
         "require_proof": False,
-        "base_seed": 2026,
     }
     objective = objective_factory.create_objective_engine(
         config.objective,

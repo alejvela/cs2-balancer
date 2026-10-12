@@ -164,3 +164,152 @@ def test_incumbent_and_shared_objective_verification_are_exact(
     assert evaluations[0][1] is raw.teams
     assert warm.metadata == original_metadata
     assert request.metadata == {"caller": "kept"}
+
+
+def test_application_without_incumbent_skips_stable_and_preserves_absence(monkeypatch):
+    from application.balancing_application import BalancingApplication
+    from exporters.html_v2.report_context import ReportContext
+    from exporters.html_v2.sections.summary_section import SummarySection
+    from generators.snake_draft_generator import SnakeDraftGenerator
+    from optimizer.local_optimizer import LocalOptimizer
+    from optimizer.stable.stable_optimizer import StableOptimizer
+
+    config = small_config()
+    config = replace(
+        config,
+        global_search=replace(
+            config.global_search,
+            use_incumbent=False,
+            maximum_nodes=None,
+            maximum_evaluations=None,
+            maximum_elapsed_seconds=None,
+        ),
+    )
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError(
+            "GLOBAL without incumbent must not run STABLE/local/generation"
+        )
+
+    monkeypatch.setattr(StableOptimizer, "optimize", forbidden)
+    monkeypatch.setattr(StableOptimizer, "optimize_with_details", forbidden)
+    monkeypatch.setattr(LocalOptimizer, "optimize", forbidden)
+    monkeypatch.setattr(SnakeDraftGenerator, "generate", forbidden)
+    request = BalancingRequest(
+        players(),
+        2,
+        OptimizationMode.GLOBAL,
+        title="No incumbent",
+        metadata={"caller": "kept"},
+    )
+    report = BalancingApplication(config).run(request)
+    assert (
+        report.initial_score
+        is report.initial_incumbent_score
+        is report.improvement
+        is None
+    )
+    assert report.as_dict()["initial_score"] is None
+    assert report.as_dict()["improvement"] is None
+    assert report.metadata["global_optimization"]["initial_incumbent_score"] is None
+    assert report.metadata["global_optimization"]["improvement"] is None
+    assert "stable_optimization" not in report.metadata
+    assert report.metadata["caller"] == "kept"
+    assert report.metadata["optimization_deterministic"] is True
+    assert report.title == "No incumbent"
+    assert "initial_score=None" in repr(report)
+    composition = create_balancing_composition(config)
+    context = ReportContext(report, composition.scoring_model)
+    assert context.initial_score is context.improvement is None
+    assert context.global_initial_incumbent_score is context.global_improvement is None
+    rendered = SummarySection().render(context)
+    assert "N/A" in rendered
+    assert "Sin incumbent inicial" in rendered
+    assert (
+        report.final_score == composition.objective_engine.evaluate(report.teams).score
+    )
+
+
+def test_disabled_incumbent_helper_never_accesses_supplied_warm_teams_or_score():
+    from application.global_execution import run_global_optimization
+
+    class UnusedWarmStart:
+        title = "Caller title"
+        metadata = {"caller": "kept"}
+
+        @property
+        def teams(self):
+            raise AssertionError("Unused STABLE teams were accessed")
+
+        @property
+        def final_score(self):
+            raise AssertionError("Unused STABLE score was accessed")
+
+    config = small_config()
+    config = replace(
+        config,
+        global_search=replace(
+            config.global_search,
+            use_incumbent=False,
+            maximum_nodes=None,
+            maximum_evaluations=None,
+            maximum_elapsed_seconds=None,
+        ),
+    )
+    composition = create_balancing_composition(config)
+    calls = []
+    constructor = global_factory.create_global_optimizer
+
+    def factory(config, objective):
+        optimizer = constructor(config, objective)
+        original = optimizer.optimize
+
+        def optimize(**kwargs):
+            calls.append(kwargs)
+            assert set(kwargs) == {"problem"}
+            return original(**kwargs)
+
+        optimizer.optimize = optimize
+        return optimizer
+
+    report, raw = run_global_optimization(
+        players(),
+        composition.scoring_model,
+        composition.objective_engine,
+        UnusedWarmStart(),
+        config=config,
+        optimizer_factory=factory,
+    )
+    assert len(calls) == 1
+    assert raw.initial_incumbent_score is raw.improvement is None
+    assert report.initial_score is None
+
+
+@pytest.mark.parametrize("value", [True, float("nan"), float("inf"), -float("inf")])
+def test_global_application_verification_rejects_nonfinite_score(value, monkeypatch):
+    from application.global_execution import run_global_optimization
+
+    config = small_config()
+    config = replace(
+        config, global_search=replace(config.global_search, use_incumbent=False)
+    )
+    composition = create_balancing_composition(config)
+    monkeypatch.setattr(
+        global_factory,
+        "create_global_optimizer",
+        lambda *args: SimpleNamespace(
+            optimize=lambda **kwargs: SimpleNamespace(teams=[], score=value)
+        ),
+    )
+    monkeypatch.setattr(
+        composition.objective_engine,
+        "evaluate",
+        lambda teams: SimpleNamespace(score=50),
+    )
+    with pytest.raises((ValueError, TypeError)):
+        run_global_optimization(
+            players(),
+            composition.scoring_model,
+            composition.objective_engine,
+            config=config,
+        )

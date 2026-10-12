@@ -191,6 +191,21 @@ class GlobalSearchProblem:
                 "than the problem contains."
             )
 
+        for team in self.root_state.teams:
+            if team.player_count > self.team_size:
+                raise ValueError("Root team exceeds hard team capacity.")
+            if any(index >= len(players) for index in team.player_indices):
+                raise ValueError("Root player index is outside the problem pool.")
+            protected_count = sum(
+                self.protected_seed_level is not None
+                and players[index].seed == self.protected_seed_level
+                for index in team.player_indices
+            )
+            if protected_count > self.maximum_protected_seeds_per_team:
+                raise ValueError("Root team exceeds the protected seed hard maximum.")
+            if team.protected_seed_count != protected_count:
+                raise ValueError("Root protected seed count does not match the problem players.")
+
     @property
     def player_count(
         self,

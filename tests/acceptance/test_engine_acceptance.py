@@ -277,10 +277,7 @@ def test_global_improves_or_preserves_verified_stable_incumbent() -> None:
         use_seed_pruning=True,
         use_capacity_pruning=True,
         use_power_bound=True,
-        use_elo_bound=False,
-        deterministic=True,
         require_proof=False,
-        base_seed=2026,
     )
     optimizer = GlobalOptimizer(
         objective_engine=objective_engine,

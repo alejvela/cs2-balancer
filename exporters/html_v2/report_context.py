@@ -10,6 +10,7 @@ from application.results.base_report_result import (
 from application.results.report_mode import (
     ReportMode,
 )
+from models.numeric import finite_real
 from scoring.scoring_model import (
     ScoringModel,
 )
@@ -1357,16 +1358,11 @@ class ReportContext:
         )
 
     @property
-    def global_initial_incumbent_score(
-        self,
-    ) -> float:
-        return self._safe_float(
-            self.global_optimization.get(
-                "initial_incumbent_score",
-                self.initial_score,
-            ),
-            default=self.initial_score,
-        )
+    def global_initial_incumbent_score(self) -> float | None:
+        value = self.global_optimization.get("initial_incumbent_score", self.initial_score)
+        if value is None:
+            return None
+        return finite_real(value, "initial_incumbent_score")
 
     @property
     def global_final_score(
@@ -1381,22 +1377,12 @@ class ReportContext:
         )
 
     @property
-    def global_improvement(
-        self,
-    ) -> float:
-        return self._safe_float(
-            self.global_optimization.get(
-                "improvement",
-                (
-                    self.global_final_score
-                    - self.global_initial_incumbent_score
-                ),
-            ),
-            default=(
-                self.global_final_score
-                - self.global_initial_incumbent_score
-            ),
-        )
+    def global_improvement(self) -> float | None:
+        initial = self.global_initial_incumbent_score
+        if initial is None:
+            return None
+        value = self.global_optimization.get("improvement", self.global_final_score - initial)
+        return finite_real(value, "improvement") if value is not None else None
 
     @property
     def global_nodes_visited(
@@ -1626,7 +1612,9 @@ class ReportContext:
     @property
     def initial_score(
         self,
-    ) -> float:
+    ) -> float | None:
+        if getattr(self._result, "optimization_engine", None) == "GLOBAL" and getattr(self._result, "initial_score", None) is None:
+            return None
         return self._safe_float(
             getattr(
                 self._result,
@@ -1656,7 +1644,9 @@ class ReportContext:
     @property
     def improvement(
         self,
-    ) -> float:
+    ) -> float | None:
+        if self.initial_score is None:
+            return None
         return self._safe_float(
             getattr(
                 self._result,
