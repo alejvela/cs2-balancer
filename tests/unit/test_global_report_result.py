@@ -50,7 +50,9 @@ def test_global_report_contract_and_serialization(
         metadata=metadata,
     )
     assert isinstance(result, BaseReportResult)
-    assert main.GlobalReportResult is GlobalReportResult  # Entrypoint presents the public report type.
+    assert (
+        main.GlobalReportResult is GlobalReportResult
+    )  # Entrypoint presents the public report type.
     assert result.mode is ReportMode.OPTIMIZED
     assert result.optimized is True and result.evaluation_only is False
     assert (
@@ -92,3 +94,48 @@ def test_global_report_contract_and_serialization(
     assert "OPTIMIZACIÓN GLOBAL" in output
     assert stop_reason in output
     assert "23" in output
+
+
+def test_global_report_exposes_absence_without_fabricated_baseline():
+    from dataclasses import replace
+
+    from tests.unit.optimizer.global_search.test_global_input_config_contracts import (
+        make_problem,
+        solver,
+    )
+
+    raw = solver(use_incumbent=False).optimize(make_problem())
+    composition = create_balancing_composition(small_config())
+    objective = composition.objective_engine.evaluate(raw.teams)
+    result = GlobalReportResult(raw.teams, objective, None, raw)
+    assert (
+        result.initial_score
+        is result.initial_incumbent_score
+        is result.improvement
+        is None
+    )
+    assert result.as_dict()["initial_score"] is None
+    assert result.as_dict()["improvement"] is None
+    assert "initial_score=None" in repr(result)
+    with pytest.raises(ValueError, match="must match"):
+        GlobalReportResult(raw.teams, objective, 0, raw)
+    with pytest.raises(ValueError, match="must match"):
+        GlobalReportResult(
+            raw.teams, objective, None, replace(raw, initial_incumbent_score=0)
+        )
+
+
+@pytest.mark.parametrize("value", [True, float("nan"), float("inf"), -float("inf")])
+def test_global_report_rejects_nonfinite_or_boolean_initial_score(value):
+    from tests.unit.optimizer.global_search.test_global_input_config_contracts import (
+        incumbent,
+        make_problem,
+        solver,
+    )
+
+    problem = make_problem()
+    raw = solver().optimize(problem, incumbent(problem))
+    composition = create_balancing_composition(small_config())
+    objective = composition.objective_engine.evaluate(raw.teams)
+    with pytest.raises((TypeError, ValueError)):
+        GlobalReportResult(raw.teams, objective, value, raw)

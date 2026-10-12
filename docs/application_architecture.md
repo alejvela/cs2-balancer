@@ -96,7 +96,7 @@ All rows return `BaseReportResult`. Concrete types retain their own semantics.
 | PREASSIGNED | `BalancingRequest` with assigned players, any requested mode | Preassigned generation + evaluator | `EvaluationResult` | `test_preassigned_acceptance_ignores_global_optimization` |
 | FAST | `BalancingRequest(..., optimization_mode=OptimizationMode.FAST)` | Snake draft + local pipeline | `OptimizationResult` | `test_public_flow_preserves_characterized_report[FAST]` |
 | STABLE | `BalancingRequest(..., optimization_mode=OptimizationMode.STABLE)` | Snake draft + deterministic multi-start local optimization | `OptimizationResult` | `test_public_flow_preserves_characterized_report[STABLE]` |
-| GLOBAL | `BalancingRequest(..., optimization_mode=OptimizationMode.GLOBAL)` | STABLE warm start + bounded GLOBAL search + verification | `GlobalReportResult` | `test_public_flow_preserves_characterized_report[GLOBAL]` |
+| GLOBAL | `BalancingRequest(..., optimization_mode=OptimizationMode.GLOBAL)` | Optional STABLE warm start + bounded GLOBAL search + verification | `GlobalReportResult` | `test_public_flow_preserves_characterized_report[GLOBAL]` |
 
 The parameter labels above identify modes, rather than literal pytest node IDs.
 These tests live in
@@ -109,7 +109,8 @@ restart count, stop reason and history behavior. Acceptance reuses existing
 canonical memberships and report comparisons, including scores, penalty,
 restriction scores, evaluations and history, excluding elapsed time.
 
-GLOBAL runs through the default executor without runner injection:
+GLOBAL runs through the default executor without runner injection. With the
+production default `use_incumbent=True`:
 
 ```text
 BalancingApplication
@@ -120,6 +121,10 @@ BalancingApplication
   -> verification with the composition's ObjectiveEngine
   -> GlobalReportResult
 ```
+
+With `use_incumbent=False`, the application bypasses STABLE entirely and invokes
+GLOBAL without incumbent data. Initial incumbent score and improvement remain
+None/null in the result, metadata and report presentation.
 
 The runner adapts player metrics, passes the warm-start teams and final score as
 incumbent unchanged, runs bounded search and reevaluates the selected teams with
@@ -229,14 +234,13 @@ publication SHA.
 
 v0.8 owns engine contract hardening, including these preserved debts:
 
-- **GLOBAL ignored flags:** supplied incumbents are consumed despite
-  `use_incumbent=False`; some pruning/bound switches do not gate current bound
-  calculation, and deterministic/base-seed settings do not control traversal.
-  Symmetry breaking is active. Mode-derived deterministic metadata is unchanged.
+- **GLOBAL configuration:** SCRUM-49 resolves ignored incumbent/pruning options
+  and removes no-op ELO-bound/deterministic/base-seed fields. See
+  [GLOBAL contracts](global_input_config_contracts.md). Traversal remains deterministic.
 - **Proof semantics:** existing exhaustion/optimality flags need their own
   contract review; application acceptance is not a mathematical proof.
-- **Incumbent validation:** preserve current verification and preconditions;
-  strengthening identity, feasibility or score validation requires engine work.
+- **Incumbent validation:** SCRUM-49 now checks structural/logical compatibility,
+  protected-seed hard constraints and finite authoritative score consistency.
 - **Bounds admissibility:** retain current optimistic bounds and assumptions;
   stronger admissibility guarantees require separate analysis and tests.
 - **Timing/budget semantics:** limit priority, counters and elapsed-time scope

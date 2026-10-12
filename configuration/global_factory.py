@@ -69,6 +69,7 @@ def create_global_optimizer(
         team_size_weight=config.objective.team_size_weight,
         seed_weight=config.objective.seed_weight,
         score_tolerance=config.global_search.score_tolerance,
+        pruning_policy=config.global_search.pruning_policy,
     )
 
     return GlobalOptimizer(

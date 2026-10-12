@@ -221,6 +221,7 @@ def test_global_bound_receives_custom_objective_weights_and_tolerance(monkeypatc
         "team_size_weight": 8,
         "seed_weight": 2,
         "score_tolerance": 1e-5,
+        "pruning_policy": config.global_search.pruning_policy,
     }
 
 

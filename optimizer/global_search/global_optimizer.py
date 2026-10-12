@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Sequence
+from numbers import Real
 from time import perf_counter
 
+from models.numeric import finite_real
+from models.player_identity import logical_player_identity
 from models.team import Team
 from optimizer.global_search.global_bound_calculator import (
     GlobalBoundCalculator,
@@ -60,6 +64,9 @@ class GlobalOptimizer:
                 "bound_calculator must be a GlobalBoundCalculator."
             )
 
+        if bound_calculator.pruning_policy != config.pruning_policy:
+            raise ValueError("Bound calculator pruning policy must match GLOBAL config.")
+
         self._objective_engine = objective_engine
         self._config = config
         self._bound_calculator = bound_calculator
@@ -77,14 +84,14 @@ class GlobalOptimizer:
         self._stopped = False
         self._stop_reason = "SEARCH_EXHAUSTED"
 
-        self._best_score = float("-inf")
-        self._initial_incumbent_score = float("-inf")
+        self._best_score: float | None = None
+        self._initial_incumbent_score: float | None = None
         self._best_teams: tuple[Team, ...] | None = None
 
     def optimize(
         self,
         problem: GlobalSearchProblem,
-        incumbent_teams: Sequence[Team],
+        incumbent_teams: Sequence[Team] | None = None,
         incumbent_score: float | None = None,
     ) -> GlobalOptimizationResult:
         """
@@ -102,57 +109,30 @@ class GlobalOptimizer:
                 "problem must be a GlobalSearchProblem."
             )
 
-        if incumbent_teams is None:
-            raise ValueError(
-                "incumbent_teams cannot be None."
-            )
-
-        incumbent_team_list = list(
-            incumbent_teams
+        if not self._config.use_incumbent:
+            if incumbent_teams is not None or incumbent_score is not None:
+                raise ValueError("Incumbent data is forbidden when use_incumbent=False.")
+            incumbent_team_list = None
+        else:
+            incumbent_team_list = self._validate_incumbent(problem, incumbent_teams)
+        supplied_score = (
+            finite_real(incumbent_score, "incumbent_score")
+            if incumbent_score is not None else None
         )
-
-        if not incumbent_team_list:
-            raise ValueError(
-                "incumbent_teams cannot be empty."
-            )
-
-        for index, team in enumerate(
-            incumbent_team_list,
-            start=1,
-        ):
-            if not isinstance(team, Team):
-                raise TypeError(
-                    "incumbent_teams must contain Team instances. "
-                    f"Invalid item at position {index}."
-                )
 
         self._reset(problem)
-
-        verified_incumbent_score = self._evaluate_score(
-            incumbent_team_list
-        )
-
-        if incumbent_score is not None:
-            supplied_incumbent_score = float(
-                incumbent_score
-            )
-
-            if abs(
-                supplied_incumbent_score
-                - verified_incumbent_score
+        if incumbent_team_list is not None:
+            verified_incumbent_score = self._evaluate_score(incumbent_team_list)
+            if supplied_score is not None and abs(
+                supplied_score - verified_incumbent_score
             ) > self._config.score_tolerance:
                 raise RuntimeError(
-                    "The supplied incumbent score does not match "
-                    "the ObjectiveEngine evaluation. "
-                    f"Supplied={supplied_incumbent_score:.8f}, "
-                    f"verified={verified_incumbent_score:.8f}."
+                    "The supplied incumbent score does not match the ObjectiveEngine evaluation. "
+                    f"Supplied={supplied_score:.8f}, verified={verified_incumbent_score:.8f}."
                 )
-
-        self._best_score = verified_incumbent_score
-        self._initial_incumbent_score = verified_incumbent_score
-        self._best_teams = tuple(
-            incumbent_team_list
-        )
+            self._best_score = verified_incumbent_score
+            self._initial_incumbent_score = verified_incumbent_score
+            self._best_teams = tuple(incumbent_team_list)
 
         self._search(
             problem.root_state
@@ -165,7 +145,7 @@ class GlobalOptimizer:
 
         if self._best_teams is None:
             raise RuntimeError(
-                "GLOBAL finished without a valid incumbent."
+                "GLOBAL finished without a valid solution."
             )
 
         verified_best_score = self._evaluate_score(
@@ -230,6 +210,39 @@ class GlobalOptimizer:
             stop_reason=self._stop_reason,
         )
 
+    @staticmethod
+    def _validate_incumbent(
+        problem: GlobalSearchProblem, teams: Sequence[Team] | None
+    ) -> list[Team]:
+        if teams is None:
+            raise ValueError("incumbent_teams is required when use_incumbent=True.")
+        team_list = list(teams)
+        if len(team_list) != problem.number_of_teams:
+            raise ValueError("Incumbent team count does not match the problem.")
+        if any(not isinstance(team, Team) for team in team_list):
+            raise TypeError("incumbent_teams must contain Team instances.")
+        if len({id(team) for team in team_list}) != len(team_list):
+            raise ValueError("Incumbent contains duplicated Team instances.")
+        if any(len(team.players) != problem.team_size for team in team_list):
+            raise ValueError("Incumbent team size does not match the problem.")
+        metrics_by_identity = {logical_player_identity(item.player): item for item in problem.players}
+        if len(metrics_by_identity) != problem.player_count:
+            raise ValueError("Problem contains duplicated logical identities.")
+        identities = [logical_player_identity(player) for team in team_list for player in team.players]
+        if len(set(identities)) != len(identities):
+            raise ValueError("Incumbent contains duplicated logical identities.")
+        if Counter(identities) != Counter(metrics_by_identity.keys()):
+            raise ValueError("Incumbent logical player pool does not match the problem.")
+        for team in team_list:
+            protected_count = sum(
+                problem.protected_seed_level is not None
+                and metrics_by_identity[logical_player_identity(player)].seed == problem.protected_seed_level
+                for player in team.players
+            )
+            if protected_count > problem.maximum_protected_seeds_per_team:
+                raise ValueError("Incumbent violates the protected seed hard constraint.")
+        return team_list
+
     def _reset(
         self,
         problem: GlobalSearchProblem,
@@ -247,8 +260,8 @@ class GlobalOptimizer:
         self._stopped = False
         self._stop_reason = "SEARCH_EXHAUSTED"
 
-        self._best_score = float("-inf")
-        self._initial_incumbent_score = float("-inf")
+        self._best_score = None
+        self._initial_incumbent_score = None
         self._best_teams = None
 
     def _search(
@@ -426,7 +439,7 @@ class GlobalOptimizer:
 
         self._complete_evaluations += 1
 
-        if not self._config.score_improves(
+        if self._best_score is not None and not self._config.score_improves(
             candidate=score,
             current_best=self._best_score,
         ):
@@ -498,13 +511,8 @@ class GlobalOptimizer:
             teams
         )
 
-        if isinstance(result, bool):
-            raise TypeError(
-                "ObjectiveEngine cannot return bool."
-            )
-
-        if isinstance(result, (int, float)):
-            return float(result)
+        if isinstance(result, Real):
+            return finite_real(result, "objective score")
 
         score = getattr(
             result,
@@ -525,7 +533,7 @@ class GlobalOptimizer:
                 "score or final_score."
             )
 
-        return float(score)
+        return finite_real(score, "objective score")
 
     def _limit_reached(self) -> bool:
         if self._stopped:
@@ -584,10 +592,8 @@ class GlobalOptimizer:
         return self._pruned_nodes
 
     @property
-    def best_score(self) -> float:
-        return float(
-            self._best_score
-        )
+    def best_score(self) -> float | None:
+        return self._best_score
 
     @property
     def best_teams(self) -> tuple[Team, ...] | None:
@@ -602,11 +608,12 @@ class GlobalOptimizer:
         return self._stop_reason
 
     def __repr__(self) -> str:
+        score_label = "None" if self._best_score is None else f"{self._best_score:.4f}"
         return (
             f"{self.__class__.__name__}("
             f"nodes={self._nodes_visited}, "
             f"evaluations={self._complete_evaluations}, "
-            f"best_score={self._best_score:.4f}, "
+            f"best_score={score_label}, "
             f"stopped={self._stopped}, "
             f"stop_reason={self._stop_reason!r})"
         )

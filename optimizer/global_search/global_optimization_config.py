@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from models.numeric import finite_real
+from optimizer.global_search.global_pruning_policy import GlobalPruningPolicy
 
 
 @dataclass(
@@ -76,14 +77,10 @@ class GlobalOptimizationConfig:
         Activa podas por capacidad imposible de los equipos.
 
     use_power_bound:
-        Activa la futura cota superior de Power.
+        Enable the Power upper bound. Disabled means an optimistic 100.
 
-    use_elo_bound:
-        Activa la futura cota superior de ELO.
-
-    deterministic:
-        La misma entrada y configuración deben recorrer
-        las ramas en el mismo orden.
+    Traversal is deterministic by design for deterministic inputs/objectives.
+    There is no GLOBAL randomness toggle or RNG seed.
 
     ============================================================
     Optimalidad
@@ -125,13 +122,7 @@ class GlobalOptimizationConfig:
 
     use_power_bound: bool = True
 
-    use_elo_bound: bool = True
-
-    deterministic: bool = True
-
     require_proof: bool = False
-
-    base_seed: int = 2026
 
     def __post_init__(
         self,
@@ -194,14 +185,6 @@ class GlobalOptimizationConfig:
                 self.use_power_bound
             ),
 
-            "use_elo_bound": (
-                self.use_elo_bound
-            ),
-
-            "deterministic": (
-                self.deterministic
-            ),
-
             "require_proof": (
                 self.require_proof
             ),
@@ -218,24 +201,6 @@ class GlobalOptimizationConfig:
                 raise TypeError(
                     f"{field_name} must be a boolean."
                 )
-
-        # ====================================================
-        # Seed
-        # ====================================================
-
-        if (
-            isinstance(
-                self.base_seed,
-                bool,
-            )
-            or not isinstance(
-                self.base_seed,
-                int,
-            )
-        ):
-            raise TypeError(
-                "base_seed must be an integer."
-            )
 
         # ====================================================
         # Configuración de proof
@@ -255,6 +220,14 @@ class GlobalOptimizationConfig:
                     "maximum_nodes, maximum_evaluations "
                     "and maximum_elapsed_seconds to be None."
                 )
+
+    @property
+    def pruning_policy(self) -> GlobalPruningPolicy:
+        return GlobalPruningPolicy(
+            use_capacity_pruning=self.use_capacity_pruning,
+            use_seed_pruning=self.use_seed_pruning,
+            use_power_bound=self.use_power_bound,
+        )
 
     # ========================================================
     # Comparación de puntuaciones
@@ -419,13 +392,8 @@ class GlobalOptimizationConfig:
 
             use_power_bound=True,
 
-            use_elo_bound=True,
-
-            deterministic=True,
-
             require_proof=False,
 
-            base_seed=2026,
         )
 
     @classmethod
@@ -457,13 +425,8 @@ class GlobalOptimizationConfig:
 
             use_power_bound=True,
 
-            use_elo_bound=True,
-
-            deterministic=True,
-
             require_proof=False,
 
-            base_seed=2026,
         )
 
     @classmethod
@@ -495,13 +458,8 @@ class GlobalOptimizationConfig:
 
             use_power_bound=True,
 
-            use_elo_bound=True,
-
-            deterministic=True,
-
             require_proof=False,
 
-            base_seed=2026,
         )
 
     @classmethod
@@ -538,13 +496,8 @@ class GlobalOptimizationConfig:
 
             use_power_bound=True,
 
-            use_elo_bound=True,
-
-            deterministic=True,
-
             require_proof=True,
 
-            base_seed=2026,
         )
 
     # ========================================================
@@ -595,20 +548,8 @@ class GlobalOptimizationConfig:
                 self.use_power_bound
             ),
 
-            "use_elo_bound": (
-                self.use_elo_bound
-            ),
-
-            "deterministic": (
-                self.deterministic
-            ),
-
             "require_proof": (
                 self.require_proof
-            ),
-
-            "base_seed": (
-                self.base_seed
             ),
 
             "has_node_limit": (

@@ -88,8 +88,8 @@ def test_remaining_protected_seeds_without_slots_returns_seed_prune():
     state = state.assign_next_player(0, first, 2, 1, 1)
     state = state.assign_next_player(1, second, 2, 1, 1)
     players = (
-        metrics("A", 10),
-        metrics("B", 20),
+        metrics("A", 10, seed=1),
+        metrics("B", 20, seed=1),
         metrics("Seed C", 30, seed=1),
         metrics("Seed D", 40, seed=1),
     )

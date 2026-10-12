@@ -5,6 +5,7 @@ from math import sqrt
 from typing import Any
 
 from models.numeric import finite_real
+from optimizer.global_search.global_pruning_policy import GlobalPruningPolicy
 from optimizer.global_search.global_search_problem import (
     GlobalSearchProblem,
 )
@@ -154,7 +155,7 @@ class GlobalBoundResult:
 
     reason: str | None
 
-    incumbent_score: float
+    incumbent_score: float | None
 
     depth: int
 
@@ -183,12 +184,15 @@ class GlobalBoundResult:
 
     def __post_init__(self) -> None:
         for field_name in (
-            "upper_bound", "incumbent_score", "power_upper_bound",
+            "upper_bound", "power_upper_bound",
             "elo_upper_bound", "kd_upper_bound",
             "minimum_unavoidable_power_spread",
             "minimum_unavoidable_power_stddev",
         ):
             finite_real(getattr(self, field_name), field_name)
+
+        if self.incumbent_score is not None:
+            finite_real(self.incumbent_score, "incumbent_score")
 
     def as_dict(
         self,
@@ -256,26 +260,11 @@ class GlobalBoundResult:
 
 class GlobalBoundCalculator:
     """
-    Calculador de cotas para GLOBAL.
+    GLOBAL feasibility and score bounds, controlled by immutable pruning policy.
 
-    ============================================================
-    Estado actual
-    ============================================================
-
-    Ya calcula de forma segura:
-
-        - viabilidad de capacidad;
-        - viabilidad de seeds;
-        - intervalos alcanzables de Power;
-        - mínima dispersión inevitable de Power.
-
-    Pero todavía NO utilizamos la dispersión de Power para podar.
-
-    `power_upper_bound` sigue siendo 100.
-
-    Primero queremos demostrar mediante diagnóstico que los
-    intervalos son correctos antes de convertirlos en una cota
-    del score de PowerBalanceRestriction.
+    Disabled feasibility lookaheads are not evaluated. Disabled Power contributes
+    SCORE_MAXIMUM without interval work. Score pruning requires a finite incumbent.
+    The existing bound formulas and admissibility assumptions are unchanged.
     """
 
     SCORE_MAXIMUM = 100.0
@@ -289,7 +278,15 @@ class GlobalBoundCalculator:
         team_size_weight: float = 9.0,
         seed_weight: float = 1.0,
         score_tolerance: float = 1e-6,
+        *,
+        pruning_policy: GlobalPruningPolicy | None = None,
     ) -> None:
+        if pruning_policy is None:
+            pruning_policy = GlobalPruningPolicy()
+        if not isinstance(pruning_policy, GlobalPruningPolicy):
+            raise TypeError("pruning_policy must be a GlobalPruningPolicy.")
+        self._pruning_policy = pruning_policy
+
         weights = {
             "power_weight": (
                 power_weight
@@ -375,6 +372,10 @@ class GlobalBoundCalculator:
             score_tolerance
         )
 
+    @property
+    def pruning_policy(self) -> GlobalPruningPolicy:
+        return self._pruning_policy
+
     # ========================================================
     # Evaluación pública
     # ========================================================
@@ -383,7 +384,7 @@ class GlobalBoundCalculator:
         self,
         problem: GlobalSearchProblem,
         state: GlobalSearchState,
-        incumbent_score: float,
+        incumbent_score: float | None,
     ) -> GlobalBoundResult:
         if not isinstance(
             problem,
@@ -402,10 +403,8 @@ class GlobalBoundCalculator:
             )
 
         incumbent = (
-            self._validate_numeric(
-                value=incumbent_score,
-                field_name="incumbent_score",
-            )
+            finite_real(incumbent_score, "incumbent_score")
+            if incumbent_score is not None else None
         )
 
         # ====================================================
@@ -413,18 +412,11 @@ class GlobalBoundCalculator:
         # ====================================================
 
         capacity_feasible = (
-            state.validate_capacity_feasibility(
-                total_player_count=(
-                    problem.player_count
-                ),
-
-                team_size=(
-                    problem.team_size
-                ),
-            )
+            state.validate_capacity_feasibility(problem.player_count, problem.team_size)
+            if self._pruning_policy.use_capacity_pruning else True
         )
 
-        if not capacity_feasible:
+        if self._pruning_policy.use_capacity_pruning and not capacity_feasible:
             return self._impossible_result(
                 incumbent_score=(
                     incumbent
@@ -446,13 +438,11 @@ class GlobalBoundCalculator:
         # ====================================================
 
         seed_feasible = (
-            self._seed_feasible(
-                problem=problem,
-                state=state,
-            )
+            self._seed_feasible(problem=problem, state=state)
+            if self._pruning_policy.use_seed_pruning else True
         )
 
-        if not seed_feasible:
+        if self._pruning_policy.use_seed_pruning and not seed_feasible:
             return self._impossible_result(
                 incumbent_score=(
                     incumbent
@@ -473,38 +463,39 @@ class GlobalBoundCalculator:
         # Power
         # ====================================================
 
-        power_intervals = (
-            self.power_intervals(
-                problem=problem,
-                state=state,
+        # No score-bound work is needed until a finite incumbent exists.
+        if incumbent is not None and self._pruning_policy.use_power_bound:
+            power_intervals = (
+                self.power_intervals(
+                    problem=problem,
+                    state=state,
+                )
             )
-        )
 
-        minimum_power_spread = (
-            self.minimum_unavoidable_power_spread(
-                power_intervals
+            minimum_power_spread = (
+                self.minimum_unavoidable_power_spread(
+                    power_intervals
+                )
             )
-        )
 
-        minimum_power_stddev = (
-            self.minimum_unavoidable_power_stddev(
-                intervals=power_intervals,
+            minimum_power_stddev = (
+                self.minimum_unavoidable_power_stddev(
+                    intervals=power_intervals,
+                )
             )
-        )
 
-        # ----------------------------------------------------
-        # TODAVÍA conservador.
-        #
-        # El diagnóstico anterior ya funciona, pero todavía no
-        # convertimos spread/stddev → score de Power Balance.
-        # ----------------------------------------------------
-
-        power_upper_bound = (
-            self._power_upper_bound(
-                problem=problem,
-                state=state,
+            power_upper_bound = (
+                self._power_upper_bound(
+                    problem=problem,
+                    state=state,
+                )
             )
-        )
+
+        else:
+            power_intervals = ()
+            minimum_power_spread = 0.0
+            minimum_power_stddev = 0.0
+            power_upper_bound = self.SCORE_MAXIMUM
 
         elo_upper_bound = (
             self._elo_upper_bound(
@@ -538,7 +529,8 @@ class GlobalBoundCalculator:
 
         finite_real(upper_bound, "upper_bound")
         prune = (
-            upper_bound
+            incumbent is not None
+            and upper_bound
             <= (
                 incumbent
                 + self._score_tolerance
@@ -1259,7 +1251,7 @@ class GlobalBoundCalculator:
 
     def _impossible_result(
         self,
-        incumbent_score: float,
+        incumbent_score: float | None,
         state: GlobalSearchState,
         reason: str,
         capacity_feasible: bool,

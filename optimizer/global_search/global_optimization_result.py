@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from models.numeric import finite_real
 from models.team import Team
 
 
@@ -29,7 +30,7 @@ class GlobalOptimizationResult:
 
     score: float
 
-    initial_incumbent_score: float
+    initial_incumbent_score: float | None
 
     nodes_visited: int
 
@@ -54,6 +55,9 @@ class GlobalOptimizationResult:
     def __post_init__(
         self,
     ) -> None:
+        finite_real(self.score, "score")
+        if self.initial_incumbent_score is not None:
+            finite_real(self.initial_incumbent_score, "initial_incumbent_score")
         object.__setattr__(
             self,
             "teams",
@@ -65,14 +69,17 @@ class GlobalOptimizationResult:
         self,
     ) -> bool:
         return (
-            self.score
+            self.initial_incumbent_score is not None
+            and self.score
             > self.initial_incumbent_score
         )
 
     @property
     def improvement(
         self,
-    ) -> float:
+    ) -> float | None:
+        if self.initial_incumbent_score is None:
+            return None
         return (
             self.score
             - self.initial_incumbent_score

@@ -66,7 +66,7 @@ defaults inherited from their constructors:
   separation, 1–6 swaps and redistribution ratio 0.50.
 - GLOBAL: 500,000 nodes, 100,000 evaluations, 60 seconds; tolerance and minimum
   improvement 1e-6; incumbent, symmetry, seed/capacity pruning and power-bound
-  flags true; ELO-bound false; deterministic true, require-proof false, seed 2026.
+  flags true; require-proof false. GLOBAL is deterministic by design.
   Bound weights and the shared objective are also checked. Narrow private-field
   assertions are used only where these constructor settings lack public accessors.
 - Application: four teams of five, strict CSV importer, snake draft and
@@ -94,8 +94,8 @@ protection using the existing synthetic players and real production factories:
   it and stops at the evaluation limit. The adapter preserves caller and STABLE
   metadata, reports zero local moves/history and maps search counters. A focused
   test isolates the application's extra inconsistent-score rejection.
-- Inactive GLOBAL switches are varied independently to characterize their
-  current lack of effect on this bounded scenario, not to endorse that behavior.
+- Retained GLOBAL switches are checked against the effective factory policy;
+  SCRUM-49 adds adversarial input, per-option and deterministic replay tests.
 
 Expected memberships and scores were observed on the unchanged baseline and
 reviewed alongside fresh objective and structural checks. They are small test
@@ -104,13 +104,10 @@ the reduced-budget output tests do not claim to reproduce a full 60-second run.
 
 ## Quirks and deliberate exclusions
 
-GLOBAL currently consumes a supplied incumbent even with `use_incumbent=False`.
-The seed/capacity/power/ELO switches do not gate the bound calculator in the
-current orchestration; `deterministic` and `base_seed` do not control traversal.
-Symmetry breaking does affect traversal and is not included among inactive flags.
-The report's deterministic metadata comes from OptimizationMode, so it remains
-true even when the GLOBAL configuration says false. FAST advertises false.
-These behaviors are frozen, not fixed.
+The ignored GLOBAL switches characterized in v0.7 were corrected by SCRUM-49:
+incumbent use is optional, capacity/seed/Power policy is effective, and the no-op
+ELO/deterministic/base-seed config fields were removed. Deterministic metadata
+truthfully describes unconditional traversal. See [GLOBAL contracts](global_input_config_contracts.md).
 
 Existing engine tests preserve the current exhaustion-based optimality flag;
 this is not a new mathematical proof guarantee. Counter semantics exclude

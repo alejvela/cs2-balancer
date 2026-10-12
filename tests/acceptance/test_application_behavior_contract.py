@@ -258,30 +258,10 @@ def test_global_application_rejects_inconsistent_final_score(composed_run, monke
         run_characterized_global(players, scoring, objective, warm_start)
 
 
-def test_global_currently_ignores_inactive_config_switches(composed_run):
-    players, scoring, objective, warm_start = composed_run(OptimizationMode.GLOBAL)
-    # These fields exist but do not control the v0.6 search. Deliberately do not
-    # turn their names into promised behavior; making them effective is v0.8 work.
-    for field, value in (
-        ("use_incumbent", False),
-        ("use_seed_pruning", False),
-        ("use_capacity_pruning", False),
-        ("use_power_bound", False),
-        ("use_elo_bound", True),
-        ("deterministic", False),
-        ("base_seed", 7),
-    ):
-        report = run_characterized_global(
-            players, scoring, objective, warm_start, **{field: value}
-        )
-        assert canonical_membership(report.teams) == expected_membership(
-            GLOBAL_TEAMS
-        ), field
-        assert report.final_score == pytest.approx(
-            94.43911302364742, rel=0, abs=1e-6
-        ), field
-        assert report.initial_score == warm_start.final_score, field
-        assert report.stop_reason == "EVALUATION_LIMIT", field
-        assert report.optimality_proven is False, field
-        # The adapter advertises the enum property, not the configuration field.
-        assert report.metadata["optimization_deterministic"] is True, field
+@pytest.mark.parametrize("field", ["use_seed_pruning", "use_capacity_pruning", "use_power_bound"])
+def test_retained_global_switches_reach_bound_policy(composed_run, field):
+    _, _, objective, _ = composed_run(OptimizationMode.GLOBAL)
+    config = contract_config(**{field: False})
+    optimizer = global_factory.create_global_optimizer(config, objective)
+    assert getattr(optimizer._bound_calculator.pruning_policy, field) is False
+    assert optimizer._bound_calculator.pruning_policy == config.global_search.pruning_policy
