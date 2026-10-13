@@ -252,6 +252,9 @@ def test_policy_is_immutable_and_optimizer_rejects_mismatched_wiring():
 
 
 def test_symmetry_switch_changes_available_branches_and_exhaustive_work(monkeypatch):
+    from objective.objective_engine import ObjectiveEngine
+    from objective.restrictions.team_size_restriction import TeamSizeRestriction
+    objective = ObjectiveEngine([TeamSizeRestriction(expected_size=3, penalty_per_position=25)])
     problem = make_problem()
     calls = []
     original = GlobalSearchState.canonical_available_team_indices
@@ -272,13 +275,13 @@ def test_symmetry_switch_changes_available_branches_and_exhaustive_work(monkeypa
         return ordering(optimizer, state, team_indices, player)
 
     monkeypatch.setattr(GlobalOptimizer, "_order_candidate_teams", record_options)
-    enabled = solver(use_incumbent=False).optimize(problem)
+    enabled = solver(objective, use_incumbent=False).optimize(problem)
     assert branch_options[0] == (0, (0,))
     assert calls[0] == (0, (0,))
     assert calls
     calls.clear()
     branch_options.clear()
-    disabled = solver(use_incumbent=False, use_symmetry_breaking=False).optimize(
+    disabled = solver(objective, use_incumbent=False, use_symmetry_breaking=False).optimize(
         problem
     )
     assert calls == []

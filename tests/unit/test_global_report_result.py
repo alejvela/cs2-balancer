@@ -8,6 +8,7 @@ from application.results.global_report_result import GlobalReportResult
 from application.results.report_mode import ReportMode
 from configuration.composition_root import create_balancing_composition
 from optimizer.global_search.global_optimization_result import GlobalOptimizationResult
+from optimizer.global_search.global_proof_certificate import GlobalProofCertificate
 from tests.unit.test_composition_root import players, small_config
 
 
@@ -40,6 +41,7 @@ def test_global_report_contract_and_serialization(
         optimality_proven=proven,
         stopped_by_limit=limited,
         stop_reason=stop_reason,
+        proof_certificate=GlobalProofCertificate(True, True, True, True, True, True, True, True, "fixture") if proven else None,
     )
     result = GlobalReportResult(
         teams,

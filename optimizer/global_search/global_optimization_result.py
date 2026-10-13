@@ -5,6 +5,7 @@ from typing import Any
 
 from models.numeric import finite_real
 from models.team import Team
+from optimizer.global_search.global_proof_certificate import GlobalProofCertificate
 
 
 @dataclass(
@@ -52,17 +53,34 @@ class GlobalOptimizationResult:
 
     stop_reason: str
 
+    proof_certificate: GlobalProofCertificate | None = None
+
     def __post_init__(
         self,
     ) -> None:
         finite_real(self.score, "score")
         if self.initial_incumbent_score is not None:
             finite_real(self.initial_incumbent_score, "initial_incumbent_score")
+        if self.proof_certificate is not None:
+            if type(self.proof_certificate) is not GlobalProofCertificate:
+                raise TypeError("proof_certificate must be a GlobalProofCertificate.")
+            if self.optimality_proven != self.proof_certificate.optimality_proven:
+                raise ValueError("optimality_proven must agree with its certificate.")
+        elif self.optimality_proven:
+            raise ValueError("Optimality requires a proof certificate, not a stop label.")
+        if self.optimality_proven and (self.stopped_by_limit or not self.search_exhausted):
+            raise ValueError("Budget termination cannot prove optimality.")
         object.__setattr__(
             self,
             "teams",
             tuple(self.teams),
         )
+
+    @property
+    def search_exhausted(self) -> bool:
+        if self.proof_certificate is not None:
+            return self.proof_certificate.search_exhausted
+        return self.stop_reason == "SEARCH_EXHAUSTED" and not self.stopped_by_limit
 
     @property
     def incumbent_improved(
@@ -90,6 +108,8 @@ class GlobalOptimizationResult:
     ) -> dict[str, Any]:
         return {
             "score": self.score,
+            "search_exhausted": self.search_exhausted,
+            "proof_certificate": self.proof_certificate.as_dict() if self.proof_certificate is not None else None,
             "initial_incumbent_score": (
                 self.initial_incumbent_score
             ),

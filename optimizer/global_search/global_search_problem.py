@@ -191,6 +191,10 @@ class GlobalSearchProblem:
                 "than the problem contains."
             )
 
+        indices = sorted(index for team in self.root_state.teams for index in team.player_indices)
+        if indices != list(range(self.root_state.assigned_count)):
+            raise ValueError("Root assignments must cover exactly the sequential player prefix.")
+
         for team in self.root_state.teams:
             if team.player_count > self.team_size:
                 raise ValueError("Root team exceeds hard team capacity.")

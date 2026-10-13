@@ -76,3 +76,9 @@ evaluation, time budgets/counters and stop semantics belong to SCRUM-51. No new
 ELO bound, randomness, scoring tuning, CLI/YAML configuration, HTML layout redesign,
 analytics or importer changes are included. Frozen production defaults retain
 incumbent=True and all implemented pruning features enabled.
+
+
+SCRUM-50 now adds checked bound/objective compatibility and separates exhaustion
+from certified optimality. See [bound/proof contracts](global_bound_proof_contracts.md)
+for admissibility, safe fallbacks, root/symmetry coverage and require_proof semantics.
+Budget/counter/time redesign remains deferred to SCRUM-51.
