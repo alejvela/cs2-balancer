@@ -842,7 +842,8 @@ def test_modified_restriction_result_implementation_disables_power_tightening(
 
     binding = assess_compatibility(objective, problem, calculator)
     assert not binding.power_compatible
-    assert binding.strategy == "objective-ceiling"
+    assert binding.strategy == "exhaustive-no-score-bound"
+    assert binding.score_ceiling is None
 
 
 @pytest.mark.parametrize("constant", ["SCORE_MINIMUM", "SCORE_MAXIMUM"])
@@ -862,4 +863,5 @@ def test_modified_restriction_result_score_limits_disable_power_tightening(
     monkeypatch.setattr(RestrictionResult, constant, 1.0 if constant == "SCORE_MINIMUM" else 99.0)
     binding = assess_compatibility(objective, problem, calculator)
     assert not binding.power_compatible
-    assert binding.strategy == "objective-ceiling"
+    assert binding.strategy == "exhaustive-no-score-bound"
+    assert binding.score_ceiling is None
