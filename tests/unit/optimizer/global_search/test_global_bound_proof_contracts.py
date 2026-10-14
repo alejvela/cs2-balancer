@@ -812,3 +812,40 @@ def test_unverified_next_player_cannot_omit_valid_assignments():
             config,
             GlobalBoundCalculator(pruning_policy=config.pruning_policy),
         ).optimize(problem, next(valid_distributions(problem))[1])
+
+@pytest.mark.parametrize("attribute", ["weighted_score", "_validate_score"])
+def test_modified_restriction_result_implementation_disables_power_tightening(
+    monkeypatch, attribute
+):
+    problem, objective, weights = fixture("power")
+    calculator = GlobalBoundCalculator(power_weight=weights[0])
+    assert assess_compatibility(objective, problem, calculator).power_compatible
+
+    original = getattr(RestrictionResult, attribute)
+    if isinstance(original, property):
+        monkeypatch.setattr(
+            RestrictionResult, attribute,
+            property(lambda self: 0.0),
+        )
+    else:
+        monkeypatch.setattr(
+            RestrictionResult, attribute,
+            classmethod(lambda cls, value: 0.0),
+        )
+
+    binding = assess_compatibility(objective, problem, calculator)
+    assert not binding.power_compatible
+    assert binding.strategy == "objective-ceiling"
+
+
+@pytest.mark.parametrize("constant", ["SCORE_MINIMUM", "SCORE_MAXIMUM"])
+def test_modified_restriction_result_score_limits_disable_power_tightening(
+    monkeypatch, constant
+):
+    problem, objective, weights = fixture("power")
+    calculator = GlobalBoundCalculator(power_weight=weights[0])
+    assert assess_compatibility(objective, problem, calculator).power_compatible
+    monkeypatch.setattr(RestrictionResult, constant, 1.0 if constant == "SCORE_MINIMUM" else 99.0)
+    binding = assess_compatibility(objective, problem, calculator)
+    assert not binding.power_compatible
+    assert binding.strategy == "objective-ceiling"
