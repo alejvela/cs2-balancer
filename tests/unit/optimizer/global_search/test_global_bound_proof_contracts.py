@@ -818,7 +818,14 @@ def test_modified_restriction_result_implementation_disables_power_tightening(
     monkeypatch, attribute
 ):
     problem, objective, weights = fixture("power")
-    calculator = GlobalBoundCalculator(power_weight=weights[0])
+    calculator = GlobalBoundCalculator(
+        power_weight=weights[0],
+        elo_balance_weight=0,
+        elo_spread_weight=0,
+        kd_weight=0,
+        team_size_weight=0,
+        seed_weight=0,
+    )
     assert assess_compatibility(objective, problem, calculator).power_compatible
 
     original = getattr(RestrictionResult, attribute)
@@ -843,7 +850,14 @@ def test_modified_restriction_result_score_limits_disable_power_tightening(
     monkeypatch, constant
 ):
     problem, objective, weights = fixture("power")
-    calculator = GlobalBoundCalculator(power_weight=weights[0])
+    calculator = GlobalBoundCalculator(
+        power_weight=weights[0],
+        elo_balance_weight=0,
+        elo_spread_weight=0,
+        kd_weight=0,
+        team_size_weight=0,
+        seed_weight=0,
+    )
     assert assess_compatibility(objective, problem, calculator).power_compatible
     monkeypatch.setattr(RestrictionResult, constant, 1.0 if constant == "SCORE_MINIMUM" else 99.0)
     binding = assess_compatibility(objective, problem, calculator)
