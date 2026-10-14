@@ -865,3 +865,58 @@ def test_modified_restriction_result_score_limits_disable_power_tightening(
     assert not binding.power_compatible
     assert binding.strategy == "exhaustive-no-score-bound"
     assert binding.score_ceiling is None
+
+
+@pytest.mark.parametrize("kind", ["power", "mixed", "reordered"])
+@pytest.mark.parametrize(
+    "values",
+    [
+        (0.0, 2.0**-1074, 2.0**-500, 2.0**-500, 100.0, 100.0),
+        (2.0**-500, 2.0**-500, 2.0**-500, 2.0**-500, 2.0**-500, 2.0**-500),
+        (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        (100.0, nextafter(100.0, -inf), 1e-250, 1e-150, 1e-50, 0.0),
+    ],
+)
+def test_boundary_binary64_power_bounds_cover_all_three_player_descendants(
+    kind, values
+):
+    problem, objective, weights = fixture(kind, size=3, kd_values=values)
+    calculator = GlobalBoundCalculator(
+        **dict(
+            zip(
+                (
+                    "power_weight",
+                    "elo_balance_weight",
+                    "elo_spread_weight",
+                    "kd_weight",
+                    "team_size_weight",
+                    "seed_weight",
+                ),
+                weights,
+                strict=True,
+            )
+        )
+    )
+    binding = assess_compatibility(objective, problem, calculator)
+    assert binding.power_compatible
+    candidates, optimum = oracle(problem, objective)
+    prefixes = {
+        destinations[:depth]
+        for destinations, _, _ in candidates
+        for depth in range(7)
+    }
+    for prefix in prefixes:
+        state = GlobalSearchState.empty(2)
+        for index, destination in enumerate(prefix):
+            state = state.assign_next_player(
+                destination, problem.players[index], 3, protected_seed_level=None
+            )
+        best_descendant = max(
+            score
+            for destinations, _, score in candidates
+            if destinations[: len(prefix)] == prefix
+        )
+        assert binding.upper_bound(problem, state) >= best_descendant
+    result = run_solver(problem, objective, weights)
+    assert result.score == optimum
+    assert result.optimality_proven
