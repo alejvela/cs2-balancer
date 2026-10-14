@@ -929,7 +929,10 @@ def test_scaled_weight_bounds_dominate_every_reference_descendant(kind, scale):
         kind, kd_values=(80.7, 5.1, 47.3, 20.9)
     )
     for restriction in objective.restrictions:
-        restriction.weight *= scale
+        if isinstance(restriction, PowerBalanceRestriction):
+            restriction._weight *= scale
+        else:
+            restriction.weight *= scale
     scaled_weights = tuple(weight * scale for weight in weights)
     calculator = GlobalBoundCalculator(
         **dict(
