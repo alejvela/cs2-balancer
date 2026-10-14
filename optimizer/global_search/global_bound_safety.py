@@ -11,6 +11,7 @@ from models.player_identity import logical_player_identity
 from models.team_statistics import TeamStatistics
 from objective.objective_engine import ObjectiveEngine
 from objective.objective_result import ObjectiveResult
+from objective.restriction_result import RestrictionResult
 from objective.restrictions.elo_balance_restriction import EloBalanceRestriction
 from objective.restrictions.elo_spread_restriction import EloSpreadRestriction
 from objective.restrictions.kd_balance_restriction import KdBalanceRestriction
@@ -73,6 +74,7 @@ _IMPLEMENTATIONS = {
         *_TYPES,
         ObjectiveEngine,
         ObjectiveResult,
+        RestrictionResult,
         ScoringModel,
         AttributeScoreComponent,
         ActivityFactorModel,
@@ -229,6 +231,9 @@ def assess_compatibility(objective, problem, calculator) -> BoundCompatibility:
     engine = (
         _known_implementation(objective, ObjectiveEngine)
         and _class_implementation_unchanged(ObjectiveResult)
+        and _class_implementation_unchanged(RestrictionResult)
+        and RestrictionResult.SCORE_MAXIMUM == 100.0
+        and RestrictionResult.SCORE_MINIMUM == 0.0
         and ObjectiveResult.SCORE_MAXIMUM == 100.0
         and ObjectiveResult.SCORE_MINIMUM == 0.0
     )
