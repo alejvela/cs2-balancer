@@ -920,3 +920,53 @@ def test_boundary_binary64_power_bounds_cover_all_three_player_descendants(
     result = run_solver(problem, objective, weights)
     assert result.score == optimum
     assert result.optimality_proven
+
+
+@pytest.mark.parametrize("kind", ["power", "mixed"])
+@pytest.mark.parametrize("scale", [1e-250, 1e-12, 1e12, 1e250])
+def test_scaled_weight_bounds_dominate_every_reference_descendant(kind, scale):
+    problem, objective, weights = fixture(
+        kind, kd_values=(80.7, 5.1, 47.3, 20.9)
+    )
+    for restriction in objective.restrictions:
+        restriction.weight *= scale
+    scaled_weights = tuple(weight * scale for weight in weights)
+    calculator = GlobalBoundCalculator(
+        **dict(
+            zip(
+                (
+                    "power_weight",
+                    "elo_balance_weight",
+                    "elo_spread_weight",
+                    "kd_weight",
+                    "team_size_weight",
+                    "seed_weight",
+                ),
+                scaled_weights,
+                strict=True,
+            )
+        )
+    )
+    binding = assess_compatibility(objective, problem, calculator)
+    assert binding.power_compatible
+    candidates, optimum = oracle(problem, objective)
+    prefixes = {
+        destinations[:depth]
+        for destinations, _, _ in candidates
+        for depth in range(5)
+    }
+    for prefix in prefixes:
+        state = GlobalSearchState.empty(2)
+        for index, destination in enumerate(prefix):
+            state = state.assign_next_player(
+                destination, problem.players[index], 2, protected_seed_level=None
+            )
+        best_descendant = max(
+            score
+            for destinations, _, score in candidates
+            if destinations[: len(prefix)] == prefix
+        )
+        assert binding.upper_bound(problem, state) >= best_descendant
+    result = run_solver(problem, objective, scaled_weights)
+    assert result.score == optimum
+    assert result.optimality_proven
