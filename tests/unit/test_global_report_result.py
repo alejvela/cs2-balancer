@@ -109,6 +109,7 @@ def test_global_report_exposes_absence_without_fabricated_baseline():
     raw = solver(use_incumbent=False).optimize(make_problem())
     composition = create_balancing_composition(small_config())
     objective = composition.objective_engine.evaluate(raw.teams)
+    raw = replace(raw, score=objective.score)
     result = GlobalReportResult(raw.teams, objective, None, raw)
     assert (
         result.initial_score

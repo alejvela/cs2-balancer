@@ -107,6 +107,8 @@ class GlobalOptimizer:
         que score y composición pertenecen exactamente al mismo estado.
         """
 
+        started = perf_counter()
+
         if not isinstance(
             problem,
             GlobalSearchProblem,
@@ -126,7 +128,7 @@ class GlobalOptimizer:
             if incumbent_score is not None else None
         )
 
-        self._reset(problem)
+        self._reset(problem, started=started)
         if incumbent_team_list is not None:
             verified_incumbent_score = self._evaluate_score(incumbent_team_list)
             if supplied_score is not None and abs(
@@ -148,11 +150,6 @@ class GlobalOptimizer:
 
         self._search(
             self._search_root
-        )
-
-        elapsed = (
-            perf_counter()
-            - self._start_time
         )
 
         if self._best_teams is None:
@@ -198,6 +195,7 @@ class GlobalOptimizer:
 
         if (
             self._config.require_proof
+            and exhausted
             and not optimality_proven
         ):
             self._stop_reason = (
@@ -228,7 +226,7 @@ class GlobalOptimizer:
             bound_prunes=(
                 self._bound_prunes
             ),
-            elapsed_seconds=elapsed,
+            elapsed_seconds=perf_counter() - self._start_time,
             optimality_proven=optimality_proven,
             stopped_by_limit=self._stopped,
             stop_reason=self._stop_reason,
@@ -286,9 +284,11 @@ class GlobalOptimizer:
     def _reset(
         self,
         problem: GlobalSearchProblem,
+        *,
+        started: float | None = None,
     ) -> None:
         self._problem = problem
-        self._start_time = perf_counter()
+        self._start_time = perf_counter() if started is None else started
 
         self._nodes_visited = 0
         self._complete_evaluations = 0
@@ -423,9 +423,6 @@ class GlobalOptimizer:
             if self._stopped:
                 return
 
-            if self._limit_reached():
-                return
-
             team = state.teams[team_index]
             hard_rejection = team.player_count >= problem.team_size or (
                 problem.protected_seed_level is not None and player.seed == problem.protected_seed_level
@@ -518,7 +515,7 @@ class GlobalOptimizer:
         if self._stopped:
             return
 
-        if self._limit_reached():
+        if self._limit_reached(entering_node=False):
             return
 
         teams = self._build_teams_from_state(
@@ -629,14 +626,15 @@ class GlobalOptimizer:
 
         return finite_real(score, "objective score")
 
-    def _limit_reached(self) -> bool:
+    def _limit_reached(self, *, entering_node: bool = True) -> bool:
         if self._stopped:
             return True
 
         config = self._config
 
         if (
-            config.maximum_nodes is not None
+            entering_node
+            and config.maximum_nodes is not None
             and self._nodes_visited
             >= config.maximum_nodes
         ):

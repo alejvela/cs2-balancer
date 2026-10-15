@@ -15,6 +15,69 @@ from optimizer.modes.optimization_mode import OptimizationMode
 from tests.unit.test_composition_root import players, small_config
 
 
+@pytest.mark.parametrize("proof,delta", [(False, 0), (False, 0.125), (True, 0.125)])
+def test_enclosing_time_score_and_certificate_reconciliation(monkeypatch, proof, delta):
+    import application.global_execution as module
+    from optimizer.global_search.global_proof_certificate import GlobalProofCertificate
+
+    config = small_config()
+    config = replace(config, global_search=replace(
+        config.global_search, maximum_nodes=None, maximum_evaluations=None,
+        maximum_elapsed_seconds=None, require_proof=proof, score_tolerance=0.25,
+        use_incumbent=False,
+    ))
+    composition = create_balancing_composition(config)
+    pool = players()
+    teams = composition.balancer.generator.generate(pool, 2)
+    verified = composition.objective_engine.evaluate(teams)
+    raw = GlobalOptimizationResult(
+        teams=teams, score=verified.score + delta, initial_incumbent_score=None,
+        nodes_visited=1, complete_solutions_evaluated=1, pruned_nodes=0,
+        capacity_prunes=0, seed_prunes=0, bound_prunes=0, elapsed_seconds=5,
+        optimality_proven=True, stopped_by_limit=False, stop_reason="SEARCH_EXHAUSTED",
+        proof_certificate=GlobalProofCertificate(True, True, True, True, True,
+                                               True, True, True, "fixture"),
+    )
+    clock = [0.0]
+    monkeypatch.setattr(module, "perf_counter", lambda: clock[0])
+    original_metrics = module.create_global_metrics
+
+    def metrics(*args):
+        clock[0] += 3
+        return original_metrics(*args)
+
+    class Optimizer:
+        def optimize(self, **kwargs):
+            clock[0] += 5
+            return raw
+
+    def evaluate(self, teams):
+        clock[0] += 7
+        return verified
+
+    monkeypatch.setattr(module, "create_global_metrics", metrics)
+    monkeypatch.setattr(ObjectiveEngine, "evaluate", evaluate)
+
+    def execute():
+        return module.run_global_optimization(
+            pool, composition.scoring_model, composition.objective_engine,
+            config=config, optimizer_factory=lambda *_: Optimizer(),
+        )
+
+    if proof:
+        with pytest.raises(RuntimeError, match="exact independent report score"):
+            execute()
+        return
+    report, result = execute()
+    assert result.elapsed_seconds == report.elapsed_seconds == 15
+    assert result.score == report.score == verified.score
+    assert result.optimality_proven is (delta == 0)
+    assert result.proof_certificate.final_score_exact is (delta == 0)
+    assert report.proof_certificate is result.proof_certificate
+    assert report.metadata["global_optimization"]["final_score"] == verified.score
+    assert result.search_exhausted and not result.stopped_by_limit
+
+
 def test_metrics_preserve_player_identity_fallbacks_and_numeric_conversion():
     primary = SimpleNamespace(elo=1600, faceit_elo=999, kd=1.2, seed=None)
     fallback = SimpleNamespace(elo=None, faceit_elo="1700", kd="1.3", seed="2")
@@ -56,6 +119,8 @@ def test_metrics_keep_existing_missing_stat_errors(player, message):
 def test_incumbent_and_shared_objective_verification_are_exact(
     monkeypatch, delta, raises
 ):
+    clock = iter((10.0, 15.0))
+    monkeypatch.setattr("application.global_execution.perf_counter", lambda: next(clock))
     config = small_config()
     config = replace(
         config,
@@ -128,7 +193,7 @@ def test_incumbent_and_shared_objective_verification_are_exact(
         assert (
             result.final_score == warm.final_score
         )  # Fresh objective remains authoritative.
-        assert result.metadata["global_optimization"]["final_score"] == raw.score
+        assert result.metadata["global_optimization"]["final_score"] == result.final_score
         assert result.title == "Warm title"
         assert result.metadata["caller"] == "kept"
         assert (
@@ -146,15 +211,17 @@ def test_incumbent_and_shared_objective_verification_are_exact(
         )
         assert result.metadata["global_optimization"] == {
             "initial_incumbent_score": raw.initial_incumbent_score,
-            "final_score": raw.score,
-            "improvement": raw.improvement,
+            "final_score": result.final_score,
+            "improvement": result.improvement,
             "nodes_visited": 7,
             "complete_solutions_evaluated": 3,
             "pruned_nodes": 4,
             "capacity_prunes": 1,
             "seed_prunes": 1,
             "bound_prunes": 2,
-            "elapsed_seconds": 1.25,
+            "elapsed_seconds": 5.0,
+            "search_exhausted": False,
+            "proof_certificate": None,
             "optimality_proven": False,
             "stopped_by_limit": True,
             "stop_reason": "NODE_LIMIT",

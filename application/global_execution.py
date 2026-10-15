@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
+from dataclasses import replace
+from time import perf_counter
 from typing import Any
 
 from application.balancing_request import BalancingRequest
@@ -127,6 +129,7 @@ def run_global_optimization(
     production factories, preserving warm-start data only when enabled.
     """
 
+    started = perf_counter()
     problem = global_factory.create_global_problem(
         config,
         create_global_metrics(players, scoring_model),
@@ -165,6 +168,22 @@ def run_global_optimization(
             f"ObjectiveEngine={objective_result.score:.8f}."
         )
 
+    # Preserve tolerance for consistency, but never attach an exact certificate
+    # to a different independently verified score.
+    certificate = global_result.proof_certificate
+    if objective_result.score != global_result.score:
+        if search_config.require_proof:
+            raise RuntimeError("GLOBAL proof requires an exact independent report score.")
+        if certificate is not None:
+            certificate = replace(certificate, final_score_exact=False)
+    global_result = replace(
+        global_result,
+        score=objective_result.score,
+        proof_certificate=certificate,
+        optimality_proven=certificate.optimality_proven if certificate is not None else False,
+        elapsed_seconds=perf_counter() - started,
+    )
+
     metadata = dict(metadata if metadata is not None else getattr(stable_result, "metadata", {}))
 
     metadata["optimization_applied"] = True
@@ -183,6 +202,8 @@ def run_global_optimization(
         "seed_prunes": global_result.seed_prunes,
         "bound_prunes": global_result.bound_prunes,
         "elapsed_seconds": global_result.elapsed_seconds,
+        "search_exhausted": global_result.search_exhausted,
+        "proof_certificate": global_result.proof_certificate.as_dict() if global_result.proof_certificate else None,
         "optimality_proven": global_result.optimality_proven,
         "stopped_by_limit": global_result.stopped_by_limit,
         "stop_reason": global_result.stop_reason,

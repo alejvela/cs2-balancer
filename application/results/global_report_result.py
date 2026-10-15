@@ -34,6 +34,15 @@ class GlobalReportResult(BaseReportResult):
         title: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None:
+        if type(global_result) is not GlobalOptimizationResult:
+            raise TypeError("global_result must be a GlobalOptimizationResult.")
+        teams = tuple(teams)
+        if len(teams) != len(global_result.teams) or any(
+            left is not right for left, right in zip(teams, global_result.teams, strict=True)
+        ):
+            raise ValueError("Report teams must match the exact GLOBAL teams.")
+        if finite_real(objective_result.score, "objective score") != global_result.score:
+            raise ValueError("Report score must match the GLOBAL score.")
         self._initial_score = (
             finite_real(initial_score, "initial_score") if initial_score is not None else None
         )
