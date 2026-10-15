@@ -58,12 +58,39 @@ class GlobalOptimizationResult:
     def __post_init__(
         self,
     ) -> None:
+        counters = (self.nodes_visited, self.complete_solutions_evaluated,
+                    self.pruned_nodes, self.capacity_prunes, self.seed_prunes,
+                    self.bound_prunes)
+        if any(type(value) is not int for value in counters):
+            raise TypeError("GLOBAL counters must be integers.")
+        if any(value < 0 for value in counters):
+            raise ValueError("GLOBAL counters must be nonnegative.")
+        if self.capacity_prunes + self.seed_prunes + self.bound_prunes != self.pruned_nodes:
+            raise ValueError("Prune breakdown must equal pruned_nodes.")
+        if self.complete_solutions_evaluated + self.pruned_nodes > self.nodes_visited:
+            raise ValueError("Evaluated and pruned nodes cannot exceed visited nodes.")
+        if finite_real(self.elapsed_seconds, "elapsed_seconds") < 0:
+            raise ValueError("elapsed_seconds must be nonnegative.")
+        for name in ("optimality_proven", "stopped_by_limit"):
+            if type(getattr(self, name)) is not bool:
+                raise TypeError(f"{name} must be a boolean.")
+        limits = ("NODE_LIMIT", "EVALUATION_LIMIT", "TIME_LIMIT")
+        if self.stop_reason not in (*limits, "SEARCH_EXHAUSTED", "PROOF_NOT_COMPLETED"):
+            raise ValueError("Unknown GLOBAL stop_reason.")
+        if self.optimality_proven and self.stopped_by_limit:
+            raise ValueError("Budget termination cannot prove optimality.")
+        if self.stopped_by_limit != (self.stop_reason in limits):
+            raise ValueError("stop_reason must agree with stopped_by_limit.")
+        if self.stop_reason == "PROOF_NOT_COMPLETED" and self.optimality_proven:
+            raise ValueError("PROOF_NOT_COMPLETED cannot prove optimality.")
         finite_real(self.score, "score")
         if self.initial_incumbent_score is not None:
             finite_real(self.initial_incumbent_score, "initial_incumbent_score")
         if self.proof_certificate is not None:
             if type(self.proof_certificate) is not GlobalProofCertificate:
                 raise TypeError("proof_certificate must be a GlobalProofCertificate.")
+            if self.proof_certificate.search_exhausted == self.stopped_by_limit:
+                raise ValueError("Certificate exhaustion must agree with operational termination.")
             if self.optimality_proven != self.proof_certificate.optimality_proven:
                 raise ValueError("optimality_proven must agree with its certificate.")
         elif self.optimality_proven:
@@ -80,7 +107,7 @@ class GlobalOptimizationResult:
     def search_exhausted(self) -> bool:
         if self.proof_certificate is not None:
             return self.proof_certificate.search_exhausted
-        return self.stop_reason == "SEARCH_EXHAUSTED" and not self.stopped_by_limit
+        return self.stop_reason in ("SEARCH_EXHAUSTED", "PROOF_NOT_COMPLETED")
 
     @property
     def incumbent_improved(
