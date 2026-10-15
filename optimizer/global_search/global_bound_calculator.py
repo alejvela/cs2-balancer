@@ -149,7 +149,7 @@ class GlobalBoundResult:
 
     feasible: bool
 
-    upper_bound: float
+    upper_bound: float | None
 
     prune: bool
 
@@ -184,13 +184,15 @@ class GlobalBoundResult:
 
     def __post_init__(self) -> None:
         for field_name in (
-            "upper_bound", "power_upper_bound",
+            "power_upper_bound",
             "elo_upper_bound", "kd_upper_bound",
             "minimum_unavoidable_power_spread",
             "minimum_unavoidable_power_stddev",
         ):
             finite_real(getattr(self, field_name), field_name)
 
+        if self.upper_bound is not None:
+            finite_real(self.upper_bound, "upper_bound")
         if self.incumbent_score is not None:
             finite_real(self.incumbent_score, "incumbent_score")
 
@@ -264,7 +266,8 @@ class GlobalBoundCalculator:
 
     Disabled feasibility lookaheads are not evaluated. Disabled Power contributes
     SCORE_MAXIMUM without interval work. Score pruning requires a finite incumbent.
-    The existing bound formulas and admissibility assumptions are unchanged.
+    evaluate() produces diagnostic proposals, not an objective compatibility
+    certificate. GlobalOptimizer verifies proposals with global_bound_safety.
     """
 
     SCORE_MAXIMUM = 100.0
@@ -373,6 +376,15 @@ class GlobalBoundCalculator:
         )
 
     @property
+    def component_weights(self) -> tuple[float, ...]:
+        return (self._power_weight, self._elo_balance_weight, self._elo_spread_weight,
+                self._kd_weight, self._team_size_weight, self._seed_weight)
+
+    @property
+    def score_tolerance(self) -> float:
+        return self._score_tolerance
+
+    @property
     def pruning_policy(self) -> GlobalPruningPolicy:
         return self._pruning_policy
 
@@ -380,12 +392,8 @@ class GlobalBoundCalculator:
     # Evaluación pública
     # ========================================================
 
-    def evaluate(
-        self,
-        problem: GlobalSearchProblem,
-        state: GlobalSearchState,
-        incumbent_score: float | None,
-    ) -> GlobalBoundResult:
+    def evaluate_feasibility(self, problem, state, incumbent_score):
+        """Retained lookaheads only; no objective/Power/weight assumptions."""
         if not isinstance(
             problem,
             GlobalSearchProblem,
@@ -458,6 +466,19 @@ class GlobalBoundCalculator:
 
                 seed_feasible=False,
             )
+
+        return None
+
+    def evaluate(
+        self,
+        problem: GlobalSearchProblem,
+        state: GlobalSearchState,
+        incumbent_score: float | None,
+    ) -> GlobalBoundResult:
+        feasibility = self.evaluate_feasibility(problem, state, incumbent_score)
+        if feasibility is not None:
+            return feasibility
+        incumbent = finite_real(incumbent_score, "incumbent_score") if incumbent_score is not None else None
 
         # ====================================================
         # Power

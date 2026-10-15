@@ -183,7 +183,7 @@ def test_incumbent_sequence_is_shallow_copied_retainining_exact_teams_and_reeval
         left is right for left, right in zip(result.teams, incumbent, strict=True)
     )
     assert objective.calls[0] is not outer
-    assert len(objective.calls) == 2
+    assert len(objective.calls) == 4
 
 
 def test_supplied_incumbent_score_is_consistency_assertion_with_tolerance():
@@ -237,9 +237,12 @@ def test_incumbent_only_result_is_new_and_retains_incumbent_references_and_searc
     assert result.score == result.initial_incumbent_score == 50
     assert result.improvement == 0
     assert result.incumbent_improved is False
-    assert result.nodes_visited == result.pruned_nodes == result.bound_prunes == 1
+    assert result.nodes_visited == 1
+    assert result.pruned_nodes == result.bound_prunes == 0
+    assert result.complete_solutions_evaluated == 1
     assert result.stop_reason == "SEARCH_EXHAUSTED"
-    assert result.optimality_proven is True
+    assert result.search_exhausted is True
+    assert result.optimality_proven is False
 
 
 def test_qualifying_generated_solution_uses_fresh_teams_exact_players_and_capacities():
@@ -281,9 +284,10 @@ def test_bound_pruning_counts_visited_node_and_specific_reason(reason, counter):
     ).optimize(problem, incumbent)
 
     assert result.nodes_visited == 1
-    assert result.pruned_nodes == 1
-    assert getattr(result, counter) == 1
-    assert sum((result.capacity_prunes, result.seed_prunes, result.bound_prunes)) == 1
+    assert result.pruned_nodes == (0 if reason == "upper_bound" else 1)
+    assert getattr(result, counter) == (0 if reason == "upper_bound" else 1)
+    assert sum((result.capacity_prunes, result.seed_prunes, result.bound_prunes)) == result.pruned_nodes
+    assert result.optimality_proven is False
 
 
 def test_node_limit_is_hard_and_reports_node_limit():
@@ -299,7 +303,7 @@ def test_node_limit_is_hard_and_reports_node_limit():
     assert result.optimality_proven is False
 
 
-def test_evaluation_limit_is_hard_and_excludes_incumbent_and_final_verification():
+def test_evaluation_limit_is_hard_and_excludes_incumbent_witness_and_final_verification():
     problem = branching_problem()
     incumbent = incumbent_for(problem)
     objective = IdentityObjective(incumbent, 0, 50)
@@ -310,7 +314,7 @@ def test_evaluation_limit_is_hard_and_excludes_incumbent_and_final_verification(
     assert result.complete_solutions_evaluated == 1
     assert result.stop_reason == "EVALUATION_LIMIT"
     assert result.optimality_proven is False
-    assert len(objective.calls) == 3
+    assert len(objective.calls) == 4
 
 
 def test_time_limit_is_checked_at_operation_boundary(monkeypatch):
@@ -355,16 +359,19 @@ def test_exhaustive_completion_reports_search_exhausted_and_current_optimality_f
 
     assert result.stop_reason == "SEARCH_EXHAUSTED"
     assert result.stopped_by_limit is False
-    assert result.optimality_proven is True
+    assert result.search_exhausted is True
+    assert result.optimality_proven is False
+    assert result.proof_certificate.root_complete is False
 
 
 def test_final_selected_state_is_reevaluated_and_inconsistency_raises():
     optimizer = GlobalOptimizer(
-        SequenceObjective((10, 20, 21)), config(), ScriptedBound()
+        SequenceObjective((10, 10, 20, 21)), config(), ScriptedBound()
     )
 
     with pytest.raises(RuntimeError):
-        optimizer.optimize(complete_problem(), incumbent_for(complete_problem()))
+        problem = complete_problem()
+        optimizer.optimize(problem, incumbent_for(problem))
 
 
 def test_malformed_objective_result_and_objective_failure_propagate():

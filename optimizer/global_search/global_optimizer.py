@@ -11,12 +11,18 @@ from models.team import Team
 from optimizer.global_search.global_bound_calculator import (
     GlobalBoundCalculator,
 )
+from optimizer.global_search.global_bound_safety import (
+    assess_compatibility,
+    certified_decision,
+    select_root,
+)
 from optimizer.global_search.global_optimization_config import (
     GlobalOptimizationConfig,
 )
 from optimizer.global_search.global_optimization_result import (
     GlobalOptimizationResult,
 )
+from optimizer.global_search.global_proof_certificate import GlobalProofCertificate
 from optimizer.global_search.global_search_problem import (
     GlobalSearchProblem,
 )
@@ -133,9 +139,15 @@ class GlobalOptimizer:
             self._best_score = verified_incumbent_score
             self._initial_incumbent_score = verified_incumbent_score
             self._best_teams = tuple(incumbent_team_list)
+            canonical = self._canonical_incumbent(problem, incumbent_team_list)
+            # Metadata equality cannot establish a score witness: incoming caches
+            # or object-sensitive objectives can differ from a fresh assignment.
+            self._incumbent_in_domain = self._evaluate_score(canonical) == verified_incumbent_score
+            if self._config.require_proof and not self._incumbent_in_domain:
+                raise RuntimeError("Incumbent score has no exact witness in the canonical problem domain.")
 
         self._search(
-            problem.root_state
+            self._search_root
         )
 
         elapsed = (
@@ -164,13 +176,25 @@ class GlobalOptimizer:
                 f"verified={verified_best_score:.8f}."
             )
 
+        final_exact = verified_best_score == self._best_score
+        if self._config.require_proof and not final_exact:
+            raise RuntimeError("GLOBAL proof requires an exact independent final score.")
         self._best_score = verified_best_score
-
-        optimality_proven = (
-            not self._stopped
-            and self._stop_reason
-            == "SEARCH_EXHAUSTED"
+        exhausted = not self._stopped and self._stop_reason == "SEARCH_EXHAUSTED"
+        certificate = GlobalProofCertificate(
+            search_exhausted=exhausted,
+            root_complete=self._root_complete,
+            symmetry_safe=not self._use_symmetry or self._compatibility.bitwise_symmetric,
+            score_pruning_safe=self._score_prunes_safe,
+            feasibility_pruning_safe=self._feasibility_prunes_safe and self._assignments_safe,
+            ranking_exact=self._ranking_exact,
+            incumbent_in_domain=self._incumbent_in_domain,
+            final_score_exact=final_exact,
+            bound_strategy=self._compatibility.strategy,
+            root_expanded=self._search_root is not problem.root_state,
+            traversal_verified=self._traversal_verified and self._verified_traversal(),
         )
+        optimality_proven = certificate.optimality_proven
 
         if (
             self._config.require_proof
@@ -208,6 +232,7 @@ class GlobalOptimizer:
             optimality_proven=optimality_proven,
             stopped_by_limit=self._stopped,
             stop_reason=self._stop_reason,
+            proof_certificate=certificate,
         )
 
     @staticmethod
@@ -243,6 +268,21 @@ class GlobalOptimizer:
                 raise ValueError("Incumbent violates the protected seed hard constraint.")
         return team_list
 
+    @staticmethod
+    def _canonical_incumbent(problem, teams):
+        by_identity = {logical_player_identity(item.player): index for index, item in enumerate(problem.players)}
+        return [Team(index + 1, [problem.players[player_index].player for player_index in sorted(
+            by_identity[logical_player_identity(player)] for player in team.players)])
+            for index, team in enumerate(teams)]
+
+    def _verified_traversal(self) -> bool:
+        for name, (expected, code) in _PROOF_TRAVERSAL.items():
+            method = getattr(self, name)
+            function = getattr(method, "__func__", method)
+            if function is not expected or getattr(function, "__code__", None) is not code:
+                return False
+        return True
+
     def _reset(
         self,
         problem: GlobalSearchProblem,
@@ -263,6 +303,18 @@ class GlobalOptimizer:
         self._best_score = None
         self._initial_incumbent_score = None
         self._best_teams = None
+        self._compatibility = assess_compatibility(self._objective_engine, problem, self._bound_calculator)
+        self._search_root, self._root_complete = select_root(problem, self._compatibility, self._config.require_proof)
+        self._use_symmetry = self._config.use_symmetry_breaking and (
+            self._compatibility.bitwise_symmetric if self._config.require_proof else self._compatibility.symmetric)
+        self._score_prunes_safe = True
+        self._feasibility_prunes_safe = True
+        self._assignments_safe = True
+        self._traversal_verified = self._verified_traversal()
+        if self._config.require_proof and not self._traversal_verified:
+            raise RuntimeError("require_proof needs a verified traversal implementation.")
+        self._ranking_exact = True
+        self._incumbent_in_domain = True
 
     def _search(
         self,
@@ -278,13 +330,16 @@ class GlobalOptimizer:
 
         problem = self._require_problem()
 
-        bound = self._bound_calculator.evaluate(
-            problem=problem,
-            state=state,
-            incumbent_score=self._best_score,
+        bound, safe = certified_decision(
+            self._bound_calculator, self._compatibility, problem, state,
+            self._best_score, self._config.require_proof,
         )
 
         if bound.prune:
+            if bound.reason == "upper_bound":
+                self._score_prunes_safe = self._score_prunes_safe and safe
+            else:
+                self._feasibility_prunes_safe = self._feasibility_prunes_safe and safe
             self._pruned_nodes += 1
 
             if bound.reason == "capacity_impossible":
@@ -308,12 +363,17 @@ class GlobalOptimizer:
             state
         )
 
+        if player is not problem.players[state.next_player_index]:
+            if self._config.require_proof:
+                raise RuntimeError("next_player must match the canonical problem prefix.")
+            self._assignments_safe = False
+
         if player is None:
             raise RuntimeError(
                 "Incomplete state does not expose a next player."
             )
 
-        if self._config.use_symmetry_breaking:
+        if self._use_symmetry:
             team_indices = (
                 state.canonical_available_team_indices(
                     problem.team_size
@@ -328,14 +388,36 @@ class GlobalOptimizer:
                 if team.player_count < problem.team_size
             )
 
+        if self._use_symmetry:
+            expected = []
+            empty_seen = False
+            for index, team in enumerate(state.teams):
+                if team.player_count >= problem.team_size:
+                    continue
+                if team.player_count == 0:
+                    if empty_seen:
+                        continue
+                    empty_seen = True
+                expected.append(index)
+            if tuple(team_indices) != tuple(expected):
+                if self._config.require_proof:
+                    raise RuntimeError("Unverified symmetry rule changed the candidate set.")
+                self._assignments_safe = False
+
         if not team_indices:
             return
 
+        allowed = tuple(team_indices)
         team_indices = self._order_candidate_teams(
             state=state,
             team_indices=team_indices,
             player=player,
         )
+
+        if sorted(team_indices) != sorted(allowed):
+            if self._config.require_proof:
+                raise RuntimeError("Branch ordering must be a permutation of available candidates.")
+            self._assignments_safe = False
 
         for team_index in team_indices:
             if self._stopped:
@@ -344,6 +426,12 @@ class GlobalOptimizer:
             if self._limit_reached():
                 return
 
+            team = state.teams[team_index]
+            hard_rejection = team.player_count >= problem.team_size or (
+                problem.protected_seed_level is not None and player.seed == problem.protected_seed_level
+                and team.protected_seed_count >= problem.maximum_protected_seeds_per_team)
+            if hard_rejection:
+                continue
             try:
                 child = state.assign_next_player(
                     team_index=team_index,
@@ -357,6 +445,10 @@ class GlobalOptimizer:
                     ),
                 )
             except ValueError:
+                # Overflow/unknown failures are not hard-constraint proofs.
+                self._assignments_safe = False
+                if self._config.require_proof:
+                    raise
                 continue
 
             self._search(
@@ -439,11 +531,13 @@ class GlobalOptimizer:
 
         self._complete_evaluations += 1
 
-        if self._best_score is not None and not self._config.score_improves(
-            candidate=score,
-            current_best=self._best_score,
-        ):
-            return
+        if self._best_score is not None:
+            improved = score > self._best_score if self._config.require_proof else self._config.score_improves(
+                candidate=score, current_best=self._best_score)
+            if not improved:
+                if score > self._best_score:
+                    self._ranking_exact = False
+                return
 
         self._best_score = float(
             score
@@ -617,3 +711,13 @@ class GlobalOptimizer:
             f"stopped={self._stopped}, "
             f"stop_reason={self._stop_reason!r})"
         )
+
+
+# Proof relies on the audited DFS/evaluation/validation, not just a stop label.
+# Reordering remains customizable: _search separately validates its permutation.
+_PROOF_TRAVERSAL = {
+    name: (getattr(GlobalOptimizer, name), getattr(GlobalOptimizer, name).__code__)
+    for name in ("_search", "_reset", "_evaluate_complete_state", "_evaluate_score",
+                 "_build_teams_from_state", "_create_team", "_validate_incumbent",
+                 "_canonical_incumbent", "_require_problem", "_limit_reached")
+}

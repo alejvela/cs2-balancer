@@ -8,6 +8,7 @@ from application.results.base_report_result import BaseReportResult
 from application.results.report_mode import ReportMode
 from models.numeric import finite_real
 from optimizer.global_search.global_optimization_result import GlobalOptimizationResult
+from optimizer.global_search.global_proof_certificate import GlobalProofCertificate
 
 
 class GlobalReportResult(BaseReportResult):
@@ -127,7 +128,11 @@ class GlobalReportResult(BaseReportResult):
 
     @property
     def search_exhausted(self) -> bool:
-        return self.global_stop_reason == "SEARCH_EXHAUSTED"
+        return self._global_result.search_exhausted
+
+    @property
+    def proof_certificate(self) -> GlobalProofCertificate | None:
+        return self._global_result.proof_certificate
 
     @property
     def initial_incumbent_score(self) -> float | None:
