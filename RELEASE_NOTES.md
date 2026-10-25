@@ -1,5 +1,22 @@
 # cs2-balancer v0.7.0 — Application Foundation
 
+## v0.8 engine contracts — acceptance candidate (unreleased)
+
+SCRUM-46 through SCRUM-51 tighten numeric/identity validation, transactional
+restoration, STABLE restart publication and GLOBAL configuration, bounds, proof,
+budgets and result semantics. SCRUM-52 adds integration acceptance and migration
+documentation; it does not change production code or publish a version.
+
+See the [migration matrix and executable example](docs/v07_to_v08_migration.md),
+[release readiness and risks](docs/v08_release_readiness.md), and
+[machine-readable v0.7 comparison](docs/v08_fingerprint_evidence.json).
+Production powers, teams and scores remain unchanged on the frozen fixtures.
+The five recorded differences are corrected FAST/STABLE work counts and removal
+of three inert GLOBAL configuration keys. Review the guide before upgrading
+direct result/config consumers. Independent review and release approval remain.
+
+## v0.7.0 release preparation (historical)
+
 **Release candidate — not published.** Project metadata identifies this candidate
 as `0.7.0`; `pyproject.toml` remains the sole package-version source of truth.
 The candidate head commit is the review target. After approval and merge,

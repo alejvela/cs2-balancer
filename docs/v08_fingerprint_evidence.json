@@ -1,0 +1,881 @@
+{
+  "baseline_commit": "2fb6a2c7248387538f89d2a040fa94601034e949",
+  "baseline_tag": "v0.7.0",
+  "candidate_base": "d05e329017c05fcf3bc2f2bf2bf34c3f265ebc96",
+  "differences": [
+    {
+      "after": 1037,
+      "approval": "SCRUM-47",
+      "before": 737,
+      "path": "/modes/fast/evaluations",
+      "reason": "SearchWork counts completed searches with no accepted move; 300 formerly omitted evaluations.",
+      "status": "approved_difference"
+    },
+    {
+      "after": 433,
+      "approval": "SCRUM-47",
+      "before": 133,
+      "path": "/modes/stable/evaluations",
+      "reason": "SearchWork counts completed searches with no accepted move; 300 formerly omitted evaluations.",
+      "status": "approved_difference"
+    },
+    {
+      "after": null,
+      "approval": "SCRUM-49",
+      "before": 2026,
+      "path": "/production_config/global_search/base_seed",
+      "reason": "Removed inert GLOBAL configuration field; no alias retained.",
+      "status": "removed"
+    },
+    {
+      "after": null,
+      "approval": "SCRUM-49",
+      "before": true,
+      "path": "/production_config/global_search/deterministic",
+      "reason": "Removed inert GLOBAL configuration field; no alias retained.",
+      "status": "removed"
+    },
+    {
+      "after": null,
+      "approval": "SCRUM-49",
+      "before": false,
+      "path": "/production_config/global_search/use_elo_bound",
+      "reason": "Removed inert GLOBAL configuration field; no alias retained.",
+      "status": "removed"
+    }
+  ],
+  "frozen_sources": [
+    {
+      "path": "tests/fixtures/lan_2026_baseline.json",
+      "sha256": "dccb9256eea5473a2f22f790a96168ecc2b957a1d1308dd25c58490a59d69d97",
+      "status": "unchanged"
+    },
+    {
+      "path": "tests/fixtures/lan_2026_players.json",
+      "sha256": "dbc1024006457909111a58a486640a6f3aaf9770190cd1deb151621fbe8e0c89",
+      "status": "unchanged"
+    }
+  ],
+  "runtime": "CPython 3.14.6 Windows",
+  "schema_version": 1,
+  "scope": "Production factories/defaults; deterministic 20-player synthetic fixture with 3 STABLE restarts and GLOBAL 500 nodes/50 evaluations; elapsed times excluded. LAN frozen regression separately retained.",
+  "unchanged": [
+    "powers",
+    "all mode team memberships",
+    "all mode initial/final scores",
+    "all restriction scores, weights and penalties",
+    "GLOBAL counters and stop reason",
+    "all retained production configuration fields"
+  ],
+  "v07": {
+    "modes": {
+      "fast": {
+        "components": {
+          "ELO Balance": {
+            "penalty": 0.0,
+            "score": 92.720168642084,
+            "weight": 10.0
+          },
+          "ELO Spread": {
+            "penalty": 0.0,
+            "score": 100.0,
+            "weight": 5.0
+          },
+          "KD Balance": {
+            "penalty": 0.0,
+            "score": 99.36112343500005,
+            "weight": 20.0
+          },
+          "Power Balance": {
+            "penalty": 0.0,
+            "score": 99.41148754401468,
+            "weight": 55.0
+          },
+          "Seed 1 Separation": {
+            "penalty": 0.0,
+            "score": 100.0,
+            "weight": 1.0
+          },
+          "Team Size": {
+            "penalty": 0.0,
+            "score": 100.0,
+            "weight": 9.0
+          }
+        },
+        "evaluations": 737,
+        "final_score": 98.82055970041648,
+        "initial_score": 85.90274787398944,
+        "penalty": 0.0,
+        "teams": [
+          [
+            "SYNTHETIC-0001",
+            "SYNTHETIC-0007",
+            "SYNTHETIC-0015",
+            "SYNTHETIC-0017",
+            "SYNTHETIC-0020"
+          ],
+          [
+            "SYNTHETIC-0002",
+            "SYNTHETIC-0005",
+            "SYNTHETIC-0006",
+            "SYNTHETIC-0014",
+            "SYNTHETIC-0018"
+          ],
+          [
+            "SYNTHETIC-0003",
+            "SYNTHETIC-0008",
+            "SYNTHETIC-0012",
+            "SYNTHETIC-0013",
+            "SYNTHETIC-0016"
+          ],
+          [
+            "SYNTHETIC-0004",
+            "SYNTHETIC-0009",
+            "SYNTHETIC-0010",
+            "SYNTHETIC-0011",
+            "SYNTHETIC-0019"
+          ]
+        ]
+      },
+      "global": {
+        "bound_prunes": 24,
+        "capacity_prunes": 0,
+        "complete_solutions_evaluated": 50,
+        "components": {
+          "ELO Balance": {
+            "penalty": 0.0,
+            "score": 93.03619337135818,
+            "weight": 10.0
+          },
+          "ELO Spread": {
+            "penalty": 0.0,
+            "score": 100.0,
+            "weight": 5.0
+          },
+          "KD Balance": {
+            "penalty": 0.0,
+            "score": 95.52786404500041,
+            "weight": 20.0
+          },
+          "Power Balance": {
+            "penalty": 0.0,
+            "score": 92.78167432274823,
+            "weight": 55.0
+          },
+          "Seed 1 Separation": {
+            "penalty": 0.0,
+            "score": 100.0,
+            "weight": 1.0
+          },
+          "Team Size": {
+            "penalty": 0.0,
+            "score": 100.0,
+            "weight": 9.0
+          }
+        },
+        "evaluations": 50,
+        "final_score": 94.43911302364742,
+        "initial_score": 92.78213695058761,
+        "nodes_visited": 219,
+        "optimality_proven": false,
+        "penalty": 0.0,
+        "pruned_nodes": 24,
+        "seed_prunes": 0,
+        "stop_reason": "EVALUATION_LIMIT",
+        "teams": [
+          [
+            "SYNTHETIC-0001",
+            "SYNTHETIC-0003",
+            "SYNTHETIC-0014",
+            "SYNTHETIC-0019",
+            "SYNTHETIC-0020"
+          ],
+          [
+            "SYNTHETIC-0002",
+            "SYNTHETIC-0004",
+            "SYNTHETIC-0006",
+            "SYNTHETIC-0017",
+            "SYNTHETIC-0018"
+          ],
+          [
+            "SYNTHETIC-0005",
+            "SYNTHETIC-0008",
+            "SYNTHETIC-0010",
+            "SYNTHETIC-0011",
+            "SYNTHETIC-0012"
+          ],
+          [
+            "SYNTHETIC-0007",
+            "SYNTHETIC-0009",
+            "SYNTHETIC-0013",
+            "SYNTHETIC-0015",
+            "SYNTHETIC-0016"
+          ]
+        ]
+      },
+      "stable": {
+        "components": {
+          "ELO Balance": {
+            "penalty": 0.0,
+            "score": 65.02496060444992,
+            "weight": 10.0
+          },
+          "ELO Spread": {
+            "penalty": 0.0,
+            "score": 45.3,
+            "weight": 5.0
+          },
+          "KD Balance": {
+            "penalty": 0.0,
+            "score": 96.01021713035173,
+            "weight": 20.0
+          },
+          "Power Balance": {
+            "penalty": 0.0,
+            "score": 99.65926811649504,
+            "weight": 55.0
+          },
+          "Seed 1 Separation": {
+            "penalty": 0.0,
+            "score": 100.0,
+            "weight": 1.0
+          },
+          "Team Size": {
+            "penalty": 0.0,
+            "score": 100.0,
+            "weight": 9.0
+          }
+        },
+        "evaluations": 133,
+        "final_score": 92.78213695058761,
+        "initial_score": 81.92748970563993,
+        "penalty": 0.0,
+        "teams": [
+          [
+            "SYNTHETIC-0001",
+            "SYNTHETIC-0007",
+            "SYNTHETIC-0009",
+            "SYNTHETIC-0019",
+            "SYNTHETIC-0020"
+          ],
+          [
+            "SYNTHETIC-0002",
+            "SYNTHETIC-0005",
+            "SYNTHETIC-0010",
+            "SYNTHETIC-0011",
+            "SYNTHETIC-0014"
+          ],
+          [
+            "SYNTHETIC-0003",
+            "SYNTHETIC-0008",
+            "SYNTHETIC-0012",
+            "SYNTHETIC-0013",
+            "SYNTHETIC-0016"
+          ],
+          [
+            "SYNTHETIC-0004",
+            "SYNTHETIC-0006",
+            "SYNTHETIC-0015",
+            "SYNTHETIC-0017",
+            "SYNTHETIC-0018"
+          ]
+        ]
+      }
+    },
+    "powers": [
+      79.08092355328284,
+      63.5378265602777,
+      79.23970772306333,
+      63.7773024527897,
+      62.557133116807925,
+      66.46319860683222,
+      60.78822334378259,
+      46.553262642221426,
+      60.9643814428678,
+      58.79003820205021,
+      47.11718083853123,
+      51.81476365760529,
+      50.52137552840987,
+      33.62825653154582,
+      53.670808828796,
+      36.598076488249355,
+      42.52313057979426,
+      38.76027787988709,
+      35.47600011945858,
+      28.501723795787335
+    ],
+    "production_config": {
+      "debug_final_teams": true,
+      "debug_players": false,
+      "event": {
+        "importer_strict": true,
+        "name": "LAN CS2",
+        "number_of_teams": 4,
+        "preassigned_title": "Evaluaci\u00f3n de equipos predeterminados",
+        "report_title": "LAN CS2 \u2014 An\u00e1lisis de equipos",
+        "require_all_teams": true,
+        "team_name_prefix": "Equipo",
+        "team_size": 5
+      },
+      "faceit": {
+        "delay_seconds": 0.25,
+        "fallback_game_ids": [
+          "csgo"
+        ],
+        "preferred_game_id": "cs2",
+        "recent_matches": 30,
+        "retries": 3,
+        "retry_delay_seconds": 1.0,
+        "run_import": true,
+        "strict": false,
+        "timeout_seconds": 20.0
+      },
+      "global_search": {
+        "base_seed": 2026,
+        "deterministic": true,
+        "maximum_elapsed_seconds": 60.0,
+        "maximum_evaluations": 100000,
+        "maximum_nodes": 500000,
+        "minimum_improvement": 1e-06,
+        "require_proof": false,
+        "score_tolerance": 1e-06,
+        "use_capacity_pruning": true,
+        "use_elo_bound": false,
+        "use_incumbent": true,
+        "use_power_bound": true,
+        "use_seed_pruning": true,
+        "use_symmetry_breaking": true
+      },
+      "objective": {
+        "acceptable_spread": 200.0,
+        "elo_balance_weight": 10.0,
+        "elo_midpoint": 120.0,
+        "elo_spread_weight": 5.0,
+        "elo_steepness": 0.025,
+        "good_spread": 150.0,
+        "ideal_spread": 100.0,
+        "kd_max_deviation": 0.35,
+        "kd_weight": 20.0,
+        "maximum_penalty": 100.0,
+        "maximum_per_team": 1,
+        "maximum_spread": 400.0,
+        "penalty_per_excess_player": 100.0,
+        "penalty_per_position": 25.0,
+        "poor_spread": 300.0,
+        "power_weight": 55.0,
+        "seed_level": 1,
+        "seed_weight": 1.0,
+        "team_size_weight": 9.0
+      },
+      "optimization_mode": "global",
+      "paths": {
+        "faceit_errors": "data\\faceit_errors.csv",
+        "generated_stats": "data\\players_stats.csv",
+        "output_report": "output\\lan_report.html",
+        "source_players": "data\\players.csv"
+      },
+      "pipeline": {
+        "phases": [
+          {
+            "enabled": true,
+            "max_iterations": 100,
+            "minimum_improvement": 0.01,
+            "name": "Quick Swap Improvement",
+            "neighborhood": "swap",
+            "stop_when_no_move": true,
+            "strategy": "first_improvement"
+          },
+          {
+            "enabled": true,
+            "max_iterations": 30,
+            "minimum_improvement": 0.01,
+            "name": "Final Swap Polish",
+            "neighborhood": "swap",
+            "stop_when_no_move": true,
+            "strategy": "exhaustive"
+          }
+        ]
+      },
+      "restart": {
+        "maximum_seeded_players_per_team": 1,
+        "maximum_swaps": 6,
+        "minimum_swaps": 1,
+        "partial_redistribution_ratio": 0.5,
+        "separated_seed_level": 1
+      },
+      "scoring": {
+        "activity_factor": "engine_defaults",
+        "components": [
+          {
+            "attribute": "elo",
+            "default_score": 0.0,
+            "midpoint": 1800.0,
+            "name": "ELO",
+            "steepness": -0.003,
+            "weight": 40.0
+          },
+          {
+            "attribute": "kd",
+            "default_score": 0.0,
+            "midpoint": 1.0,
+            "name": "KD",
+            "steepness": -8.0,
+            "weight": 25.0
+          },
+          {
+            "attribute": "adr",
+            "default_score": 0.0,
+            "midpoint": 75.0,
+            "name": "ADR",
+            "steepness": -0.1,
+            "weight": 15.0
+          },
+          {
+            "attribute": "kpr",
+            "default_score": 0.0,
+            "midpoint": 0.7,
+            "name": "KPR",
+            "steepness": -12.0,
+            "weight": 10.0
+          },
+          {
+            "attribute": "winrate",
+            "default_score": 0.0,
+            "midpoint": 50.0,
+            "name": "Winrate",
+            "steepness": -0.12,
+            "weight": 7.0
+          },
+          {
+            "attribute": "hs",
+            "default_score": 0.0,
+            "midpoint": 45.0,
+            "name": "HS",
+            "steepness": -0.08,
+            "weight": 3.0
+          }
+        ],
+        "default_power": 0.0,
+        "minimum_available_weight": 40.0
+      },
+      "stable": {
+        "base_seed": 2026,
+        "convergence_patience": 30,
+        "maximum_elapsed_seconds": null,
+        "maximum_restarts": 150,
+        "maximum_total_evaluations": null,
+        "minimum_restarts": 30,
+        "minimum_unique_solutions": 20,
+        "perfect_score": 100.0,
+        "score_tolerance": 1e-06,
+        "stop_on_perfect_score": false,
+        "target_confirmation_restarts": 10,
+        "target_score": 100.0
+      }
+    }
+  },
+  "v08": {
+    "modes": {
+      "fast": {
+        "components": {
+          "ELO Balance": {
+            "penalty": 0.0,
+            "score": 92.720168642084,
+            "weight": 10.0
+          },
+          "ELO Spread": {
+            "penalty": 0.0,
+            "score": 100.0,
+            "weight": 5.0
+          },
+          "KD Balance": {
+            "penalty": 0.0,
+            "score": 99.36112343500005,
+            "weight": 20.0
+          },
+          "Power Balance": {
+            "penalty": 0.0,
+            "score": 99.41148754401468,
+            "weight": 55.0
+          },
+          "Seed 1 Separation": {
+            "penalty": 0.0,
+            "score": 100.0,
+            "weight": 1.0
+          },
+          "Team Size": {
+            "penalty": 0.0,
+            "score": 100.0,
+            "weight": 9.0
+          }
+        },
+        "evaluations": 1037,
+        "final_score": 98.82055970041648,
+        "initial_score": 85.90274787398944,
+        "penalty": 0.0,
+        "teams": [
+          [
+            "SYNTHETIC-0001",
+            "SYNTHETIC-0007",
+            "SYNTHETIC-0015",
+            "SYNTHETIC-0017",
+            "SYNTHETIC-0020"
+          ],
+          [
+            "SYNTHETIC-0002",
+            "SYNTHETIC-0005",
+            "SYNTHETIC-0006",
+            "SYNTHETIC-0014",
+            "SYNTHETIC-0018"
+          ],
+          [
+            "SYNTHETIC-0003",
+            "SYNTHETIC-0008",
+            "SYNTHETIC-0012",
+            "SYNTHETIC-0013",
+            "SYNTHETIC-0016"
+          ],
+          [
+            "SYNTHETIC-0004",
+            "SYNTHETIC-0009",
+            "SYNTHETIC-0010",
+            "SYNTHETIC-0011",
+            "SYNTHETIC-0019"
+          ]
+        ]
+      },
+      "global": {
+        "bound_prunes": 24,
+        "capacity_prunes": 0,
+        "complete_solutions_evaluated": 50,
+        "components": {
+          "ELO Balance": {
+            "penalty": 0.0,
+            "score": 93.03619337135818,
+            "weight": 10.0
+          },
+          "ELO Spread": {
+            "penalty": 0.0,
+            "score": 100.0,
+            "weight": 5.0
+          },
+          "KD Balance": {
+            "penalty": 0.0,
+            "score": 95.52786404500041,
+            "weight": 20.0
+          },
+          "Power Balance": {
+            "penalty": 0.0,
+            "score": 92.78167432274823,
+            "weight": 55.0
+          },
+          "Seed 1 Separation": {
+            "penalty": 0.0,
+            "score": 100.0,
+            "weight": 1.0
+          },
+          "Team Size": {
+            "penalty": 0.0,
+            "score": 100.0,
+            "weight": 9.0
+          }
+        },
+        "evaluations": 50,
+        "final_score": 94.43911302364742,
+        "initial_score": 92.78213695058761,
+        "nodes_visited": 219,
+        "optimality_proven": false,
+        "penalty": 0.0,
+        "pruned_nodes": 24,
+        "seed_prunes": 0,
+        "stop_reason": "EVALUATION_LIMIT",
+        "teams": [
+          [
+            "SYNTHETIC-0001",
+            "SYNTHETIC-0003",
+            "SYNTHETIC-0014",
+            "SYNTHETIC-0019",
+            "SYNTHETIC-0020"
+          ],
+          [
+            "SYNTHETIC-0002",
+            "SYNTHETIC-0004",
+            "SYNTHETIC-0006",
+            "SYNTHETIC-0017",
+            "SYNTHETIC-0018"
+          ],
+          [
+            "SYNTHETIC-0005",
+            "SYNTHETIC-0008",
+            "SYNTHETIC-0010",
+            "SYNTHETIC-0011",
+            "SYNTHETIC-0012"
+          ],
+          [
+            "SYNTHETIC-0007",
+            "SYNTHETIC-0009",
+            "SYNTHETIC-0013",
+            "SYNTHETIC-0015",
+            "SYNTHETIC-0016"
+          ]
+        ]
+      },
+      "stable": {
+        "components": {
+          "ELO Balance": {
+            "penalty": 0.0,
+            "score": 65.02496060444992,
+            "weight": 10.0
+          },
+          "ELO Spread": {
+            "penalty": 0.0,
+            "score": 45.3,
+            "weight": 5.0
+          },
+          "KD Balance": {
+            "penalty": 0.0,
+            "score": 96.01021713035173,
+            "weight": 20.0
+          },
+          "Power Balance": {
+            "penalty": 0.0,
+            "score": 99.65926811649504,
+            "weight": 55.0
+          },
+          "Seed 1 Separation": {
+            "penalty": 0.0,
+            "score": 100.0,
+            "weight": 1.0
+          },
+          "Team Size": {
+            "penalty": 0.0,
+            "score": 100.0,
+            "weight": 9.0
+          }
+        },
+        "evaluations": 433,
+        "final_score": 92.78213695058761,
+        "initial_score": 81.92748970563993,
+        "penalty": 0.0,
+        "teams": [
+          [
+            "SYNTHETIC-0001",
+            "SYNTHETIC-0007",
+            "SYNTHETIC-0009",
+            "SYNTHETIC-0019",
+            "SYNTHETIC-0020"
+          ],
+          [
+            "SYNTHETIC-0002",
+            "SYNTHETIC-0005",
+            "SYNTHETIC-0010",
+            "SYNTHETIC-0011",
+            "SYNTHETIC-0014"
+          ],
+          [
+            "SYNTHETIC-0003",
+            "SYNTHETIC-0008",
+            "SYNTHETIC-0012",
+            "SYNTHETIC-0013",
+            "SYNTHETIC-0016"
+          ],
+          [
+            "SYNTHETIC-0004",
+            "SYNTHETIC-0006",
+            "SYNTHETIC-0015",
+            "SYNTHETIC-0017",
+            "SYNTHETIC-0018"
+          ]
+        ]
+      }
+    },
+    "powers": [
+      79.08092355328284,
+      63.5378265602777,
+      79.23970772306333,
+      63.7773024527897,
+      62.557133116807925,
+      66.46319860683222,
+      60.78822334378259,
+      46.553262642221426,
+      60.9643814428678,
+      58.79003820205021,
+      47.11718083853123,
+      51.81476365760529,
+      50.52137552840987,
+      33.62825653154582,
+      53.670808828796,
+      36.598076488249355,
+      42.52313057979426,
+      38.76027787988709,
+      35.47600011945858,
+      28.501723795787335
+    ],
+    "production_config": {
+      "debug_final_teams": true,
+      "debug_players": false,
+      "event": {
+        "importer_strict": true,
+        "name": "LAN CS2",
+        "number_of_teams": 4,
+        "preassigned_title": "Evaluaci\u00f3n de equipos predeterminados",
+        "report_title": "LAN CS2 \u2014 An\u00e1lisis de equipos",
+        "require_all_teams": true,
+        "team_name_prefix": "Equipo",
+        "team_size": 5
+      },
+      "faceit": {
+        "delay_seconds": 0.25,
+        "fallback_game_ids": [
+          "csgo"
+        ],
+        "preferred_game_id": "cs2",
+        "recent_matches": 30,
+        "retries": 3,
+        "retry_delay_seconds": 1.0,
+        "run_import": true,
+        "strict": false,
+        "timeout_seconds": 20.0
+      },
+      "global_search": {
+        "maximum_elapsed_seconds": 60.0,
+        "maximum_evaluations": 100000,
+        "maximum_nodes": 500000,
+        "minimum_improvement": 1e-06,
+        "require_proof": false,
+        "score_tolerance": 1e-06,
+        "use_capacity_pruning": true,
+        "use_incumbent": true,
+        "use_power_bound": true,
+        "use_seed_pruning": true,
+        "use_symmetry_breaking": true
+      },
+      "objective": {
+        "acceptable_spread": 200.0,
+        "elo_balance_weight": 10.0,
+        "elo_midpoint": 120.0,
+        "elo_spread_weight": 5.0,
+        "elo_steepness": 0.025,
+        "good_spread": 150.0,
+        "ideal_spread": 100.0,
+        "kd_max_deviation": 0.35,
+        "kd_weight": 20.0,
+        "maximum_penalty": 100.0,
+        "maximum_per_team": 1,
+        "maximum_spread": 400.0,
+        "penalty_per_excess_player": 100.0,
+        "penalty_per_position": 25.0,
+        "poor_spread": 300.0,
+        "power_weight": 55.0,
+        "seed_level": 1,
+        "seed_weight": 1.0,
+        "team_size_weight": 9.0
+      },
+      "optimization_mode": "global",
+      "paths": {
+        "faceit_errors": "data\\faceit_errors.csv",
+        "generated_stats": "data\\players_stats.csv",
+        "output_report": "output\\lan_report.html",
+        "source_players": "data\\players.csv"
+      },
+      "pipeline": {
+        "phases": [
+          {
+            "enabled": true,
+            "max_iterations": 100,
+            "minimum_improvement": 0.01,
+            "name": "Quick Swap Improvement",
+            "neighborhood": "swap",
+            "stop_when_no_move": true,
+            "strategy": "first_improvement"
+          },
+          {
+            "enabled": true,
+            "max_iterations": 30,
+            "minimum_improvement": 0.01,
+            "name": "Final Swap Polish",
+            "neighborhood": "swap",
+            "stop_when_no_move": true,
+            "strategy": "exhaustive"
+          }
+        ]
+      },
+      "restart": {
+        "maximum_seeded_players_per_team": 1,
+        "maximum_swaps": 6,
+        "minimum_swaps": 1,
+        "partial_redistribution_ratio": 0.5,
+        "separated_seed_level": 1
+      },
+      "scoring": {
+        "activity_factor": "engine_defaults",
+        "components": [
+          {
+            "attribute": "elo",
+            "default_score": 0.0,
+            "midpoint": 1800.0,
+            "name": "ELO",
+            "steepness": -0.003,
+            "weight": 40.0
+          },
+          {
+            "attribute": "kd",
+            "default_score": 0.0,
+            "midpoint": 1.0,
+            "name": "KD",
+            "steepness": -8.0,
+            "weight": 25.0
+          },
+          {
+            "attribute": "adr",
+            "default_score": 0.0,
+            "midpoint": 75.0,
+            "name": "ADR",
+            "steepness": -0.1,
+            "weight": 15.0
+          },
+          {
+            "attribute": "kpr",
+            "default_score": 0.0,
+            "midpoint": 0.7,
+            "name": "KPR",
+            "steepness": -12.0,
+            "weight": 10.0
+          },
+          {
+            "attribute": "winrate",
+            "default_score": 0.0,
+            "midpoint": 50.0,
+            "name": "Winrate",
+            "steepness": -0.12,
+            "weight": 7.0
+          },
+          {
+            "attribute": "hs",
+            "default_score": 0.0,
+            "midpoint": 45.0,
+            "name": "HS",
+            "steepness": -0.08,
+            "weight": 3.0
+          }
+        ],
+        "default_power": 0.0,
+        "minimum_available_weight": 40.0
+      },
+      "stable": {
+        "base_seed": 2026,
+        "convergence_patience": 30,
+        "maximum_elapsed_seconds": null,
+        "maximum_restarts": 150,
+        "maximum_total_evaluations": null,
+        "minimum_restarts": 30,
+        "minimum_unique_solutions": 20,
+        "perfect_score": 100.0,
+        "score_tolerance": 1e-06,
+        "stop_on_perfect_score": false,
+        "target_confirmation_restarts": 10,
+        "target_score": 100.0
+      }
+    }
+  }
+}
