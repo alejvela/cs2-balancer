@@ -54,6 +54,8 @@ execution uses existing deterministic acceptance budgets (three STABLE restarts,
 500 GLOBAL nodes / 50 evaluations, no time limit) and 20 synthetic players.
 Elapsed times are deliberately excluded. Score comparisons across Python versions
 retain the existing absolute `1e-6` tolerance; identity/counters/config compare exactly.
+Only filesystem separators in `production_config.paths` are normalized for
+Windows/Linux comparison; the original Windows observations remain untouched.
 
 To reproduce, extract `git archive v0.7.0` into a separate directory, then run:
 
@@ -89,9 +91,10 @@ retains its original 0.5.0 provenance; it is not relabeled or regenerated.
 - [x] Frozen fixtures retained and individually justified comparison table.
 - [x] [Migration guide](v07_to_v08_migration.md) covers APIs, config, exceptions,
   result metadata, compatibility and rollback.
-- [x] Ruff: `python -m ruff check . --exclude .tmp --exclude .venv-1` passes locally
-  (exclusions are untracked local archives/environment only; CI uses `ruff check .`).
-- [ ] Final full pytest/coverage measurement and PR CI results: recorded in PR.
+- [x] Ruff: `python -m ruff check .` passes locally without exclusions.
+- [x] Full local pytest/coverage: 1481 passed, 73.94% combined coverage,
+  78.51% statements (9392/11963), 59.46% branches (2244/3774), CPython 3.14.6.
+- [ ] PR CI results on the final head: tracked in [PR #39](https://github.com/alejvela/cs2-balancer/pull/39).
 - [x] Existing `.github/workflows/tests.yml` runs Ruff + full pytest on Python
   3.11 and 3.12, and coverage on 3.12. Configuration inspection alone is not a
   green CI claim; actual job URLs/results are recorded in PR after push.

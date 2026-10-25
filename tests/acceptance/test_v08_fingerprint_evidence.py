@@ -1,22 +1,26 @@
 """Reviewable v0.7 evidence is fixed data, never refreshed by this test."""
 
 import json
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
 from tests.acceptance.v08_fingerprint_probe import snapshot
 
 
-def assert_snapshot(actual, expected):
-    if isinstance(expected, dict):
+def assert_snapshot(actual, expected, path=()):
+    if path[:2] == ("production_config", "paths") and len(path) == 3:
+        # Evidence keeps the original Windows observations. Compare only path
+        # separators portably, retaining exact spelling and all path components.
+        assert PureWindowsPath(actual).as_posix() == PureWindowsPath(expected).as_posix()
+    elif isinstance(expected, dict):
         assert actual.keys() == expected.keys()
         for key in expected:
-            assert_snapshot(actual[key], expected[key])
+            assert_snapshot(actual[key], expected[key], (*path, key))
     elif isinstance(expected, list):
         assert len(actual) == len(expected)
         for left, right in zip(actual, expected, strict=True):
-            assert_snapshot(left, right)
+            assert_snapshot(left, right, path)
     elif isinstance(expected, float):
         assert actual == pytest.approx(expected, rel=0, abs=1e-6)
     else:
