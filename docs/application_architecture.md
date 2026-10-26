@@ -6,10 +6,11 @@ architecture documentation, not a final v0.7 release declaration. SCRUM-42
 completes the thin production entrypoint on SCRUM-43 merge
 `4ca5a370bef548b2b8ca835b6b8bce8e1f4ba3ba`.
 
-The v0.7.0 release candidate validates this foundation on the SCRUM-42 merge
+Historically, the v0.7.0 release candidate validated this foundation on the SCRUM-42 merge
 `63b93fdef09b5a220b069f6570265006885acde4`. Package version metadata lives in
 `pyproject.toml`; [release and migration notes](../RELEASE_NOTES.md) describe the
-candidate. Publication is reserved for SCRUM-44 after review and merge.
+candidate history. v0.7.0 was published through SCRUM-44. For the current v0.8.0
+candidate, see the [engine migration guide](v07_to_v08_migration.md).
 
 ## Purpose and boundaries
 
@@ -228,7 +229,7 @@ Specialized documentation:
 
 v0.7 does not tune scoring, redesign engines, introduce CLI/YAML configuration or
 fix GLOBAL proof behavior. SCRUM-45 prepares version metadata, release notes and
-final candidate validation. SCRUM-44 alone will tag and publish the reviewed
+final candidate validation. SCRUM-44 was responsible for tagging and publishing the reviewed
 SCRUM-45 merge SHA; the candidate head SHA is the review target, not the final
 publication SHA.
 

@@ -1,21 +1,103 @@
-# cs2-balancer v0.7.0 — Application Foundation
+# cs2-balancer v0.8.0 — Engine Contract Hardening
 
-## v0.8 engine contracts — acceptance candidate (unreleased)
+Release preparation: package version 0.8.0; not yet tagged or published.
+These are the final release notes proposed for review. Python >=3.11 is required.
+The supported balancing routes remain the typed `BalancingApplication` API and
+`python main.py`; tournament analytics remains available through its Python API.
 
-SCRUM-46 through SCRUM-51 tighten numeric/identity validation, transactional
-restoration, STABLE restart publication and GLOBAL configuration, bounds, proof,
-budgets and result semantics. SCRUM-52 adds integration acceptance and migration
-documentation; it does not change production code or publish a version.
+## Engine contracts
 
-See the [migration matrix and executable example](docs/v07_to_v08_migration.md),
-[release readiness and risks](docs/v08_release_readiness.md), and
-[machine-readable v0.7 comparison](docs/v08_fingerprint_evidence.json).
-Production powers, teams and scores remain unchanged on the frozen fixtures.
-The five recorded differences are corrected FAST/STABLE work counts and removal
-of three inert GLOBAL configuration keys. Review the guide before upgrading
-direct result/config consumers. Independent review and release approval remain.
+- **SCRUM-46 — Numeric values and identity:** engine decision boundaries reject
+  booleans/non-real values with `TypeError`, and NaN, infinity or numeric overflow
+  with `ValueError`. Mutable objective aggregates are revalidated. Shared logical
+  identities unify GLOBAL/STABLE pool uniqueness; duplicate Team references and
+  player indices fail validation. Anonymous ordering no longer uses memory addresses.
+- **SCRUM-47 — Transactions and local results:** failed temporary/definitive moves
+  restore exact player instances/order. `TransactionIntegrityError` takes precedence
+  when restoration fails and retains operational/undo errors. Local results require
+  explicit keyword-only `initial_score`; SearchWork counts completed searches even
+  when no move is accepted, without changing accepted-movement history semantics.
+- **SCRUM-48 — STABLE integrity:** restart/local outputs must preserve the logical
+  pool, team count and size multiset. Failures clear `last_run`; corrupt restarts
+  are not silently recovered. Selected and quality-improvement restart indices
+  are distinct. Independent final objective verification precedes publication.
+- **SCRUM-49 — GLOBAL config and incumbent:** retained pruning switches control
+  their actual work, while hard capacity/seed constraints always apply. Inert
+  `use_elo_bound`, `deterministic`, `base_seed` keys are removed without aliases.
+  Enabled incumbents require validated teams and an independently verified score.
+  Disabling incumbents skips STABLE; initial score/improvement remain `None`.
+- **SCRUM-50 — Mathematical bounds and certificates:** actual objective/scoring
+  compatibility gates safe outward Power bounds, conservative ceilings or exhaustive
+  fallback. Exhaustion is separate from proof. Immutable certificates track root,
+  symmetry, pruning, traversal, exact ranking, incumbent-domain and final-score
+  obligations. Unknown callbacks/objectives cannot establish proof by label alone.
+- **SCRUM-51 — Budgets, counters and timing:** limits mean pending work was refused;
+  exactly finishing at a budget is exhaustion. Counters distinguish admitted nodes,
+  evaluated leaves and explicit prunes. Timing includes preparation and verification;
+  operational stop reasons survive incomplete proof. Reports reconcile authoritative
+  scores and expose consistent exhaustion/certificate metadata.
+- **SCRUM-52 — Acceptance and migration:** cross-mode application/bootstrap tests,
+  adversarial boundary evidence, frozen production comparison and executable migration
+  examples cover the integrated contracts. Existing LAN fixtures remain unchanged.
 
-## v0.7.0 release preparation (historical)
+## Five approved fingerprint differences from v0.7.0
+
+The deterministic acceptance fixture retains all powers, team memberships,
+initial/final scores, restriction scores/weights/penalties, retained production
+configuration and GLOBAL counters/stop reason. Differences are individually recorded:
+
+| Field | v0.7 | v0.8 | Approval |
+| --- | --- | --- | --- |
+| FAST total evaluations | 737 | 1037 | SCRUM-47: 300 no-move evaluations counted |
+| STABLE selected-local evaluations | 133 | 433 | SCRUM-47: 300 no-move evaluations counted |
+| GLOBAL `base_seed` | 2026 | Removed | SCRUM-49: inert field |
+| GLOBAL `deterministic` | true | Removed | SCRUM-49: deterministic capability, not a switch |
+| GLOBAL `use_elo_bound` | false | Removed | SCRUM-49: unimplemented switch |
+
+[Raw evidence and reproduction](docs/v08_fingerprint_evidence.json) preserve the
+original v0.7 observations. This fixture comparison does not promise identical
+wall-clock-limited output for arbitrary inputs or runtimes.
+
+## Compatibility and migration
+
+Read the [v0.7 to v0.8 migration guide](docs/v07_to_v08_migration.md) before upgrading.
+Remove the three GLOBAL keys; STABLE's own base seed remains supported. Pass the
+actual initial score when constructing local results. Handle stricter exceptions,
+corrected work totals, optional GLOBAL initial score/improvement and new metadata.
+Do not treat `SEARCH_EXHAUSTED` as proof: check `optimality_proven` and certificate.
+Proof mode requires all budgets disabled and exact verification. A no-incumbent run
+interrupted before finding a feasible solution raises rather than returning an
+invented result. Discard a failed transactional composition before retrying.
+The unimportable unused `MoveSource` was removed; supported neighborhood interfaces
+and the legacy `generate()` compatibility hook remain as documented.
+
+## Known limitations
+
+- **Publication review required:** GLOBAL with `use_incumbent=False` returns valid
+  nullable API results, but the existing HTML exporter formats `improvement=None`
+  as a number and raises `TypeError`. Use the default incumbent-enabled HTML flow;
+  no-incumbent callers must consume the API result without that exporter. This
+  distribution smoke finding remains unresolved in this versioning-only PR.
+- Deadlines are cooperative, not hard wall-clock caps; atomic work and final
+  verification may overrun the search deadline.
+- Bounded/incompletely certified search cannot prove optimality. Exhaustive proof
+  may be impractical on large events; tiny oracles do not establish scale performance.
+- Power enclosure auditing is limited to documented CPython binary64 arithmetic
+  on 3.11/3.12/3.14 and the documented data regime; unsupported cases use safe fallback.
+- Offline acceptance does not establish live FACEIT availability. Default bootstrap
+  requires FACEIT credentials and user-provided input; no mature operator CLI is added.
+- APIs remain pre-1.0. No scoring/tuning changes, new CLI/YAML workflow, HTML redesign,
+  restart recovery or v0.9 functionality is introduced by release preparation.
+
+See [acceptance and risks](docs/v08_release_readiness.md) and
+[distribution/publication procedure](docs/v080_publication.md).
+
+---
+
+Historical release notes below retain their original preparation status and
+then-deferred scope; those statements do not describe the current release.
+
+# cs2-balancer v0.7.0 — Application Foundation (historical)
 
 **Release candidate — not published.** Project metadata identifies this candidate
 as `0.7.0`; `pyproject.toml` remains the sole package-version source of truth.
