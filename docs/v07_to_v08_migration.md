@@ -3,8 +3,8 @@
 SCRUM-52 accepts the integrated SCRUM-46 through SCRUM-51 contracts against
 `main d05e329017c05fcf3bc2f2bf2bf34c3f265ebc96`. The comparison release is
 v0.7.0, commit `2fb6a2c7248387538f89d2a040fa94601034e949` (the annotated tag
-object is not the release commit). This document describes the release candidate;
-it does not publish v0.8 or change the package's current 0.7.0 version.
+object is not the release commit). Package metadata now identifies the v0.8.0
+release candidate; publication and tagging remain separate approval steps.
 
 Python >=3.11 remains required. CI targets CPython 3.11/3.12. Local acceptance
 also runs on CPython 3.14.6. Install with `python -m pip install -e ".[dev]"`.
