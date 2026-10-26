@@ -1,5 +1,10 @@
 # CS2 Team Balancer
 
+For the v0.8 engine contract candidate, see the
+[v0.7 to v0.8 migration guide](docs/v07_to_v08_migration.md) and
+[acceptance evidence and release checklist](docs/v08_release_readiness.md).
+Package versioning and publication remain separate release steps.
+
 CS2 tools for LAN events. The current release candidate is `0.7.0`, with two main
 capabilities: **LAN Team Balancing** and **LAN Tournament Analytics & Reporting**.
 Version `0.5.0` established Engine Stabilization; v0.6.0 delivered Tournament
