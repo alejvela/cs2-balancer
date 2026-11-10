@@ -1,0 +1,4 @@
+include README.md RELEASE_NOTES.md CONTRIBUTING.md pytest.ini config.yaml
+recursive-include docs *.md *.json *.py
+recursive-include tests *.py *.md *.json *.csv
+global-exclude __pycache__ *.py[cod]

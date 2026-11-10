@@ -1,18 +1,20 @@
 # CS2 Team Balancer
 
-For the v0.8 engine contract candidate, see the
+For v0.8.0 engine contracts, see the
 [v0.7 to v0.8 migration guide](docs/v07_to_v08_migration.md) and
 [acceptance evidence and release checklist](docs/v08_release_readiness.md).
 Package versioning and publication remain separate release steps.
 
-CS2 tools for LAN events. The current release candidate is `0.7.0`, with two main
+CS2 tools for LAN events. The current release candidate is `0.8.0`, with two main
 capabilities: **LAN Team Balancing** and **LAN Tournament Analytics & Reporting**.
 Version `0.5.0` established Engine Stabilization; v0.6.0 delivered Tournament
-Analytics, from map CSV imports to a standalone HTML report. v0.7.0 prepares
+Analytics, from map CSV imports to a standalone HTML report. v0.7.0 delivered
 **Application Foundation**: typed configuration, explicit composition, a reusable
 balancing API and a thin developer entrypoint, preserving engine behavior.
-This candidate is not a published release. Publication and tagging belong to
-SCRUM-44 after candidate review and merge; see [release notes](RELEASE_NOTES.md).
+v0.8.0 hardens numeric, identity, transaction, STABLE and GLOBAL contracts,
+including safe proof certificates and explicit budget/result semantics.
+This candidate is not yet published. Tagging and publication require separate
+approval after review and merge; see [release notes](RELEASE_NOTES.md).
 
 The application remains developer-oriented and has no mature public CLI.
 Balancing offers the `BalancingApplication` Python API and the supported
