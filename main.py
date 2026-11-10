@@ -31,11 +31,18 @@ def print_global_optimization(
     print("OPTIMIZACIÓN GLOBAL")
     print("=" * 72)
 
-    print(f"Incumbent inicial:      {result.initial_incumbent_score:.4f}")
+    initial = result.initial_incumbent_score
+    print("Incumbent inicial:      " + (
+        "No disponible (sin solución inicial)" if initial is None else f"{initial:.4f}"
+    ))
 
     print(f"Score final:            {result.score:.4f}")
 
-    print(f"Mejora GLOBAL:          {result.improvement:+.4f}")
+    improvement = result.improvement
+    print("Mejora GLOBAL:          " + (
+        "No disponible (sin solución inicial)"
+        if improvement is None else f"{improvement:+.4f}"
+    ))
 
     print(f"Nodos explorados:       {result.nodes_visited:,}")
 
@@ -998,11 +1005,18 @@ def print_result(
     print(f"Modo:                 {result.mode.label}")
 
     if result.optimized:
-        print(f"Puntuación inicial:   {result.initial_score:.2f}")
+        initial = result.initial_score
+        print("Puntuación inicial:   " + (
+            "No disponible (sin solución inicial)" if initial is None else f"{initial:.2f}"
+        ))
 
         print(f"Puntuación final:     {result.final_score:.2f}")
 
-        print(f"Mejora total:         {result.improvement:+.2f}")
+        improvement = result.improvement
+        print("Mejora total:         " + (
+            "No disponible (sin solución inicial)"
+            if improvement is None else f"{improvement:+.2f}"
+        ))
 
         print(f"Movimientos:          {result.iterations}")
 
