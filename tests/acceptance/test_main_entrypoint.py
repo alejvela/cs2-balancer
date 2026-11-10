@@ -10,11 +10,52 @@ import pytest
 import main
 from application.balancing_application import BalancingApplication
 from application.balancing_request import BalancingRequest
+from application.results.optimization_result import OptimizationResult
 from configuration.application_config import ApplicationConfig
 from configuration.composition_root import create_balancing_composition
 from configuration.reporting_factory import create_reporting_components
 from optimizer.modes.optimization_mode import OptimizationMode
+from tests.acceptance.test_v08_engine_contracts import acceptance_config
 from tests.unit.test_composition_root import players, small_config
+
+
+@pytest.mark.parametrize("initial_delta", [-1.0, 0.0, 1.0])
+def test_validate_result_preserves_numeric_no_worsening_check(initial_delta):
+    config = small_config()
+    roster = players()
+    actual = BalancingApplication(config).run(
+        BalancingRequest(roster, 2, OptimizationMode.FAST)
+    )
+    result = OptimizationResult(
+        teams=actual.teams,
+        objective_result=actual.objective_result,
+        history=actual.history,
+        initial_score=actual.final_score + initial_delta,
+    )
+    if initial_delta > 0:
+        with pytest.raises(RuntimeError, match="puntuación inferior a la inicial"):
+            main.validate_result(result, roster, config)
+    else:
+        main.validate_result(result, roster, config)
+
+
+def test_validate_result_without_initial_score_keeps_team_and_roster_checks():
+    config = acceptance_config(OptimizationMode.GLOBAL, use_incumbent=False)
+    roster = players()
+    result = BalancingApplication(config).run(
+        BalancingRequest(roster, 2, OptimizationMode.GLOBAL)
+    )
+    assert result.initial_score is None
+    before = result.as_dict()
+    main.validate_result(result, roster, config)
+    with pytest.raises(RuntimeError, match="Se esperaban 3 equipos"):
+        main.validate_result(
+            result, roster,
+            replace(config, event=replace(config.event, number_of_teams=3)),
+        )
+    with pytest.raises(RuntimeError, match="ha modificado la colección de jugadores"):
+        main.validate_result(result, roster[:-1], config)
+    assert result.as_dict() == before
 
 
 def test_main_has_no_engine_factories_or_alternative_global_path():

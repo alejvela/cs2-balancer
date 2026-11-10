@@ -122,8 +122,11 @@ def test_documented_migration_example():
     assert result.proof_certificate.optimality_proven
 
 
-@pytest.mark.parametrize("mode", list(OptimizationMode))
-def test_python_main_csv_engine_report_subprocess(tmp_path, mode):
+@pytest.mark.parametrize(
+    "mode,use_incumbent",
+    [(mode, True) for mode in OptimizationMode] + [(OptimizationMode.GLOBAL, False)],
+)
+def test_python_main_csv_engine_report_subprocess(tmp_path, mode, use_incumbent):
     """Run the literal script; sitecustomize only supplies offline typed config."""
     repo = Path(__file__).resolve().parents[2]
     source = tmp_path / "stats.csv"
@@ -139,7 +142,7 @@ def test_python_main_csv_engine_report_subprocess(tmp_path, mode):
         "from tests.acceptance.test_v08_engine_contracts import acceptance_config\n"
         "from configuration.application_config import ApplicationConfig\n"
         "from optimizer.modes.optimization_mode import OptimizationMode\n"
-        f"config = acceptance_config(OptimizationMode({mode.value!r}))\n"
+        f"config = acceptance_config(OptimizationMode({mode.value!r}), use_incumbent={use_incumbent!r})\n"
         f"config = replace(config, paths=replace(config.paths, generated_stats=Path({str(source)!r}), output_report=Path({str(destination)!r})))\n"
         "ApplicationConfig.production_defaults = classmethod(lambda cls: config)\n",
         encoding="utf-8",
@@ -156,3 +159,10 @@ def test_python_main_csv_engine_report_subprocess(tmp_path, mode):
     html = destination.read_text(encoding="utf-8")
     assert '<!DOCTYPE html>' in html
     assert 'data-report-mode="optimized"' in html
+    assert html.rstrip().endswith("</html>")
+    for section in ("summary", "ranking", "activity", "teams"):
+        assert f'id="panel-{section}"' in html
+    if not use_incumbent:
+        assert "Mejora no disponible (sin solución inicial)" in html
+        assert "Mejora obtenida:" not in html
+        assert "Incumbent inicial:      No disponible (sin solución inicial)" in completed.stdout

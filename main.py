@@ -491,7 +491,7 @@ def validate_result(
     )
 
     if result.mode is ReportMode.OPTIMIZED:
-        if result.final_score < result.initial_score:
+        if result.initial_score is not None and result.final_score < result.initial_score:
             raise RuntimeError(
                 "La optimización ha terminado con una "
                 "puntuación inferior a la inicial. "
