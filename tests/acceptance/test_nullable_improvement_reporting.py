@@ -76,3 +76,23 @@ def test_application_exports_html_and_console_without_changing_results(
             assert f"Incumbent inicial:      {result.initial_score:.4f}" in console
             assert f"Mejora GLOBAL:          {result.improvement:+.4f}" in console
     assert result.as_dict() == before
+
+
+def test_global_without_incumbent_exports_after_evaluation_limit(tmp_path):
+    config = acceptance_config(
+        OptimizationMode.GLOBAL, use_incumbent=False, maximum_evaluations=1,
+    )
+    result = BalancingApplication(config).run(
+        BalancingRequest(synthetic_players()[:4], 2, OptimizationMode.GLOBAL)
+    )
+    assert result.stop_reason == "EVALUATION_LIMIT"
+    assert result.stopped_by_limit
+    assert result.initial_score is None and result.improvement is None
+    before = result.as_dict()
+    path = create_reporting_components(config).exporter.export(
+        result, tmp_path / "limited.html",
+    )
+    html = path.read_text(encoding="utf-8")
+    assert "Mejora no disponible (sin solución inicial)" in html
+    assert "Mejora obtenida:" not in html
+    assert result.as_dict() == before
