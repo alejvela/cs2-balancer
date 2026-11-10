@@ -71,13 +71,15 @@ invented result. Discard a failed transactional composition before retrying.
 The unimportable unused `MoveSource` was removed; supported neighborhood interfaces
 and the legacy `generate()` compatibility hook remain as documented.
 
-## Known limitations
+## No-incumbent reporting correction
 
-- **Publication review required:** GLOBAL with `use_incumbent=False` returns valid
-  nullable API results, but the existing HTML exporter formats `improvement=None`
-  as a number and raises `TypeError`. Use the default incumbent-enabled HTML flow;
-  no-incumbent callers must consume the API result without that exporter. This
-  distribution smoke finding remains unresolved in this versioning-only PR.
+Merged PR #41 fixes HTML/console reporting and bootstrap validation for GLOBAL
+with `use_incumbent=False`. Initial score and improvement remain `None`; reports
+explicitly display unavailable improvement. The real offline CSV → `python main.py`
+→ HTML flow is covered by regression tests. Numeric no-worsening and all other
+result validations remain active when applicable. Engine results are unchanged.
+
+## Known limitations
 - Deadlines are cooperative, not hard wall-clock caps; atomic work and final
   verification may overrun the search deadline.
 - Bounded/incompletely certified search cannot prove optimality. Exhaustive proof

@@ -1,6 +1,7 @@
 # v0.8.0 distribution and publication preparation
 
-Baseline: `main b0fe3aae70cfe9e8abec6a761bef5fd50bb4e901`.
+Integrated baseline: `main 05703da3cd2e8a6dc28dd5b364b17a923e2b41b7`, including
+the merged PR #41 no-incumbent reporting and bootstrap validation correction.
 Branch: `release/v0.8.0`. Package metadata: `pyproject.toml`, version `0.8.0`.
 This branch prepares publication only. Do not merge, create a tag or create a
 GitHub Release without separate authorization. No PyPI upload is included.
@@ -40,7 +41,12 @@ Create a fresh venv without system-site-packages, install the wheel normally wit
 its declared dependencies, run `python -m pip check`, then run imports from outside
 the checkout with isolated mode (`python -I`). Verify `importlib.metadata.version`
 is `0.8.0`, imported modules come from that venv, and exercise FAST/STABLE/GLOBAL
-with a small offline roster using production factories. Import the tournament
+with a small offline roster using production factories. Include GLOBAL with
+`use_incumbent=False`: initial score and improvement must remain `None`, HTML must
+show "Mejora no disponible (sin solución inicial)", and result validation must
+retain the team/roster checks while skipping only the absent-baseline comparison.
+Also execute the installed `main.py` with offline CSV and no-incumbent GLOBAL,
+checking exit code 0 and a complete HTML report. Import the tournament
 report API and report types as well. An editable checkout install is not evidence
 of a valid wheel.
 
@@ -50,14 +56,18 @@ engine acceptance PR is historical evidence, not a substitute for release-head C
 
 ## Publication gate
 
-Clean-wheel validation found an unresolved presentation defect: a no-incumbent
-GLOBAL result has `improvement=None`, and `HtmlExporterV2._build_header` formats
-it with `+.2f`, raising `TypeError`. Reproduce with the migration example's
-no-incumbent config and `create_reporting_components(config).exporter.export`.
-FAST/STABLE/default incumbent-enabled GLOBAL export normally. This is an existing
-engine-to-presentation issue, not a packaging failure. Resolve it or explicitly
-accept the documented limitation before authorizing publication; this preparation
-does not change production rendering code.
+The no-incumbent GLOBAL publication blocker is resolved by merged PR #41 and
+included in this branch. HTML and console summaries explicitly display unavailable
+initial/improvement values without coercing `None` to zero. Bootstrap validation
+compares final and initial scores only when an initial score exists; all other
+validations remain active. Regression coverage includes real `python main.py`
+execution with offline CSV, successful HTML export, numeric no-worsening rejection,
+and preserved team/roster validation. FAST, STABLE, incumbent-enabled GLOBAL and
+PREASSIGNED retain their existing representations and numeric results.
+
+The artifacts and validation evidence in PR #40 must identify the integrated
+release head, superseding the pre-fix builds. Final release review and separate
+authorization to merge/tag/publish are still required.
 
 On 2026-10-26, `git ls-remote --tags origin refs/tags/v0.8.0` returned no tag and
 the connected GitHub release listing contained only v0.5.0, v0.6.0 and v0.7.0.

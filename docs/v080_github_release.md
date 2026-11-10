@@ -40,11 +40,15 @@ inert; STABLE's own seed remains supported. Powers, teams, scores, component
 weights/penalties and retained production defaults match the frozen comparison.
 See the [machine-readable evidence](https://github.com/alejvela/cs2-balancer/blob/v0.8.0/docs/v08_fingerprint_evidence.json).
 
-## Known limitations
+## No-incumbent reporting correction
 
-GLOBAL without an incumbent is supported by the API, but its nullable improvement
-currently causes `TypeError` in the existing HTML exporter. Use the default
-incumbent-enabled HTML flow or consume the no-incumbent API result directly.
+GLOBAL without an incumbent now supports HTML/console reporting and the offline
+`python main.py` flow through the merged PR #41 correction. Initial score and
+improvement remain `None`; reporting explicitly displays unavailable values, and
+bootstrap validation skips only the absent-baseline comparison. Numeric results
+and the remaining validations are preserved.
+
+## Known limitations
 
 Time limits are cooperative and can overrun atomic work or final verification.
 Incomplete search is not proof; no-incumbent interruption before a feasible
