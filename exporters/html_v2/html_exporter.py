@@ -233,6 +233,8 @@ class HtmlExporterV2:
             "La distribución se ha evaluado sin modificar "
             "la asignación de jugadores."
             if context.evaluation_only
+            else "Mejora no disponible (sin solución inicial)"
+            if context.improvement is None
             else (
                 f"Mejora obtenida: "
                 f"{context.improvement:+.2f} puntos."
