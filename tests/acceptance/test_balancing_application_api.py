@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import main
+from application import balance_workflow
 from application.balancing_application import (
     BalancingApplication,
     GlobalExecutionUnavailableError,
@@ -256,9 +257,9 @@ def test_entrypoint_uses_application_once_and_exports_public_result(
         ApplicationConfig, "production_defaults", classmethod(lambda cls: config)
     )
     monkeypatch.setattr(
-        main, "resolve_players_file", lambda config: tmp_path / "unused.csv"
+        balance_workflow, "resolve_players_file", lambda config: tmp_path / "unused.csv"
     )
-    monkeypatch.setattr(main.CssStatsImporter, "load", lambda self, source: players())
+    monkeypatch.setattr(balance_workflow.CssStatsImporter, "load", lambda self, source: players())
     requests, reports, searches = [], [], []
 
     class TrackedApplication(BalancingApplication):
@@ -270,9 +271,9 @@ def test_entrypoint_uses_application_once_and_exports_public_result(
         reports.append(result)
         return tmp_path / "report.html"
 
-    monkeypatch.setattr(main, "BalancingApplication", TrackedApplication)
+    monkeypatch.setattr(balance_workflow, "BalancingApplication", TrackedApplication)
     monkeypatch.setattr(HtmlExporterV2, "export", export)
-    monkeypatch.setattr(main, "print_global_optimization", searches.append)
+    monkeypatch.setattr(balance_workflow, "print_global_optimization", searches.append)
     assert main.main() == 0
     assert len(requests) == len(reports) == 1
     assert requests[0].optimization_mode is mode

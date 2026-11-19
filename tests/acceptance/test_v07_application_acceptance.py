@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 
 import main
+from application import balance_workflow
 from application.balancing_application import BalancingApplication
 from application.balancing_request import BalancingRequest
 from application.results.base_report_result import BaseReportResult
@@ -15,6 +16,7 @@ from application.results.report_mode import ReportMode
 from configuration.application_config import ApplicationConfig
 from configuration.composition_root import create_balancing_composition
 from exporters.html_v2.html_exporter import HtmlExporterV2
+from importers import balance_source
 from optimizer.modes.optimization_mode import OptimizationMode
 from tests.acceptance import test_application_behavior_contract as contract
 from tests.acceptance.test_balancing_application_api import (
@@ -240,16 +242,16 @@ def test_main_bootstrap_exports_application_result_offline(monkeypatch, tmp_path
         ApplicationConfig, "production_defaults", classmethod(lambda cls: config)
     )
     monkeypatch.setattr(
-        main, "resolve_players_file", lambda config: tmp_path / "unused.csv"
+        balance_workflow, "resolve_players_file", lambda config: tmp_path / "unused.csv"
     )
-    monkeypatch.setattr(main.CssStatsImporter, "load", lambda self, source: players())
+    monkeypatch.setattr(balance_workflow.CssStatsImporter, "load", lambda self, source: players())
 
     def forbidden(*args, **kwargs):
         raise AssertionError(
             "Bootstrap must not call live FACEIT or legacy GLOBAL orchestration"
         )
 
-    monkeypatch.setattr(main, "run_faceit_import", forbidden)
+    monkeypatch.setattr(balance_source, "run_faceit_import", forbidden)
     assert not hasattr(main, "run_global_optimization")
     requests, reports, console_results = [], [], []
     original_export = HtmlExporterV2.export
@@ -263,9 +265,9 @@ def test_main_bootstrap_exports_application_result_offline(monkeypatch, tmp_path
         reports.append(result)
         return original_export(self, result, output)
 
-    monkeypatch.setattr(main, "BalancingApplication", ObservedApplication)
+    monkeypatch.setattr(balance_workflow, "BalancingApplication", ObservedApplication)
     monkeypatch.setattr(HtmlExporterV2, "export", export)
-    monkeypatch.setattr(main, "print_global_optimization", console_results.append)
+    monkeypatch.setattr(balance_workflow, "print_global_optimization", console_results.append)
     assert main.main() == 0
     assert len(requests) == len(reports) == 1
     assert requests[0].optimization_mode is mode
