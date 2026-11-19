@@ -8,12 +8,14 @@ from types import SimpleNamespace
 import pytest
 
 import main
+from application import balance_workflow
 from application.balancing_application import BalancingApplication
 from application.balancing_request import BalancingRequest
 from application.results.optimization_result import OptimizationResult
 from configuration.application_config import ApplicationConfig
 from configuration.composition_root import create_balancing_composition
 from configuration.reporting_factory import create_reporting_components
+from importers import balance_source
 from optimizer.modes.optimization_mode import OptimizationMode
 from tests.acceptance.test_v08_engine_contracts import acceptance_config
 from tests.unit.test_composition_root import players, small_config
@@ -58,7 +60,8 @@ def test_validate_result_without_initial_score_keeps_team_and_roster_checks():
     assert result.as_dict() == before
 
 
-def test_main_has_no_engine_factories_or_alternative_global_path():
+@pytest.mark.parametrize("owner", [main, balance_workflow])
+def test_main_has_no_engine_factories_or_alternative_global_path(owner):
     for name in (
         "_composition_config",
         "create_scoring_model",
@@ -80,8 +83,8 @@ def test_main_has_no_engine_factories_or_alternative_global_path():
         "EXPECTED_PLAYER_COUNT",
         "OPTIMIZATION_MODE",
     ):
-        assert not hasattr(main, name), name
-    tree = ast.parse(Path(main.__file__).read_text(encoding="utf-8"))
+        assert not hasattr(owner, name), name
+    tree = ast.parse(Path(owner.__file__).read_text(encoding="utf-8"))
     calls = [n.func for n in ast.walk(tree) if isinstance(n, ast.Call)]
     assert sum(isinstance(n, ast.Attribute) and n.attr == "run" for n in calls) == 1
     assert not any(
@@ -191,9 +194,9 @@ def test_faceit_refresh_configuration_and_files_offline(monkeypatch, tmp_path):
         exports.append((records, output))
         return output
 
-    monkeypatch.setattr(main, "FaceitApiClient", Client)
-    monkeypatch.setattr(main, "FaceitScraper", Scraper)
-    monkeypatch.setattr(main.CsvScraperExporter, "export", export)
+    monkeypatch.setattr(balance_source, "FaceitApiClient", Client)
+    monkeypatch.setattr(balance_source, "FaceitScraper", Scraper)
+    monkeypatch.setattr(balance_source.CsvScraperExporter, "export", export)
     assert main.resolve_players_file(config) == config.paths.generated_stats
     assert seen["closed"]
     assert seen["client"] == dict(
@@ -255,7 +258,7 @@ def test_exit_codes_and_messages(monkeypatch, capsys, error, code, message):
     def fail(config):
         raise error
 
-    monkeypatch.setattr(main, "resolve_players_file", fail)
+    monkeypatch.setattr(balance_workflow, "resolve_players_file", fail)
     assert main.main() == code
     assert message in capsys.readouterr().out
 
@@ -264,7 +267,7 @@ def test_unhandled_errors_still_propagate(monkeypatch):
     def fail(config):
         raise OSError("unhandled")
 
-    monkeypatch.setattr(main, "resolve_players_file", fail)
+    monkeypatch.setattr(balance_workflow, "resolve_players_file", fail)
     with pytest.raises(OSError, match="unhandled"):
         main.main()
 
@@ -275,10 +278,10 @@ def test_roster_validation_prevents_application_call(monkeypatch, tmp_path, caps
         ApplicationConfig, "production_defaults", classmethod(lambda cls: config)
     )
     monkeypatch.setattr(
-        main, "resolve_players_file", lambda config: tmp_path / "players.csv"
+        balance_workflow, "resolve_players_file", lambda config: tmp_path / "players.csv"
     )
     monkeypatch.setattr(
-        main.CssStatsImporter, "load", lambda self, source: players()[:1]
+        balance_workflow.CssStatsImporter, "load", lambda self, source: players()[:1]
     )
 
     def forbidden(*args):
@@ -322,7 +325,7 @@ def test_csv_to_application_to_html(monkeypatch, tmp_path, mode, assigned):
         ApplicationConfig, "production_defaults", classmethod(lambda cls: config)
     )
     events, requests, results = [], [], []
-    load = main.CssStatsImporter.load
+    load = balance_workflow.CssStatsImporter.load
 
     def import_players(self, path):
         assert path == source
@@ -352,8 +355,8 @@ def test_csv_to_application_to_html(monkeypatch, tmp_path, mode, assigned):
         assert output == config.paths.output_report
         return export(self, result, output)
 
-    monkeypatch.setattr(main.CssStatsImporter, "load", import_players)
-    monkeypatch.setattr(main, "BalancingApplication", ObservedApplication)
+    monkeypatch.setattr(balance_workflow.CssStatsImporter, "load", import_players)
+    monkeypatch.setattr(balance_workflow, "BalancingApplication", ObservedApplication)
     monkeypatch.setattr(HtmlExporterV2, "export", export_report)
     assert main.main() == 0
     assert events == ["import", "application", "export"]
@@ -368,3 +371,63 @@ def test_csv_to_application_to_html(monkeypatch, tmp_path, mode, assigned):
     assert result.metadata["mode"] == result.mode.value
     assert result.metadata["optimization_mode"] == (None if assigned else mode.value)
     assert config.paths.output_report.is_file()
+
+
+def test_roster_error_priority_and_identity_fallbacks():
+    player = SimpleNamespace(identity=" ID ", steam_id=" S ", nickname=" N ")
+    assert main.get_player_identity(player) == "id"
+    del player.identity
+    assert main.get_player_identity(player) == "steam:s"
+    del player.steam_id
+    assert main.get_player_identity(player) == "nick:n"
+    with pytest.raises(RuntimeError, match="Se han importado"):
+        main.validate_players([player, player], 3)
+    with pytest.raises(RuntimeError, match="instancias de Player duplicadas"):
+        main.validate_players([player, player], 2)
+    with pytest.raises(RuntimeError, match="jugadores duplicados"):
+        main.validate_players([player, SimpleNamespace(nickname="n")], 2)
+
+
+def test_legacy_faceit_refresh_reaches_html(monkeypatch, tmp_path, capsys):
+    config = small_config()
+    assert config.faceit.run_import
+    config = replace(config, paths=replace(
+        config.paths, generated_stats=tmp_path / "stats.csv",
+        output_report=tmp_path / "report.html",
+    ))
+    monkeypatch.setattr(ApplicationConfig, "production_defaults", lambda: config)
+
+    def refresh(received):
+        assert received is config
+        config.paths.generated_stats.write_text(
+            "Nick,SteamID,ELO,KD,Team\n" + "\n".join(
+                f"P{i},S{i},1500,1.0,{i // 2 + 1}" for i in range(4)
+            ), encoding="utf-8",
+        )
+        return config.paths.generated_stats
+
+    monkeypatch.setattr(balance_source, "run_faceit_import", refresh)
+    assert main.main() == 0
+    assert config.paths.output_report.is_file()
+    assert str(config.paths.output_report) in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("use_incumbent", [False, True])
+def test_standalone_global_workflow(tmp_path, capsys, use_incumbent):
+    config = acceptance_config(OptimizationMode.GLOBAL, use_incumbent=use_incumbent)
+    source = tmp_path / "stats.csv"
+    source.write_text(
+        "Nick,SteamID,ELO,KD\n" + "\n".join(
+            f"P{i},S{i},{1500 + i * 100},1.0" for i in range(4)
+        ), encoding="utf-8",
+    )
+    config = replace(
+        config, debug_players=True, debug_final_teams=use_incumbent,
+        paths=replace(config.paths, generated_stats=source, output_report=tmp_path / "report.html"),
+    )
+    result = balance_workflow.BalanceWorkflow().run(config)
+    assert (result.initial_score is None) is (not use_incumbent)
+    assert (result.improvement is None) is (not use_incumbent)
+    assert result.optimality_proven
+    assert config.paths.output_report.is_file()
+    assert "JUGADORES IMPORTADOS" in capsys.readouterr().out
